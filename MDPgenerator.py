@@ -4,7 +4,6 @@ import numpy as np
 import string
 from MDP import *
 import pickle
-import numpy as np
 
 # Function to generate a random probability distribution for a given list
 def random_distribution(elements):
@@ -23,7 +22,7 @@ def generateMDP(num_states, num_actions):
     :param num_actions: the number of actions.
     :return: an MDP with randomly generated transition dynamics.
     """
-    states = range(num_states) #note that it uses ordered number to denote state
+    states = list(range(num_states)) #note that it uses ordered number to denote state
     alphabet = list(string.ascii_lowercase)
     actlist = alphabet[:num_actions]
     mdp = MDP()
@@ -41,7 +40,6 @@ def generateMDP(num_states, num_actions):
             temp = random_distribution(next_states)
             for ns in next_states:
                 mdp.prob[a][mdp.states.index(s), mdp.states.index(ns)] = temp[ns]
-
     #covert prob to trans
     for s in mdp.states:
         mdp.trans[s] = {}
@@ -51,50 +49,82 @@ def generateMDP(num_states, num_actions):
                 # Get probability using matrix indices
                 mdp.trans[s][a][ns] = mdp.prob[a][mdp.states.index(s), mdp.states.index(ns)]
     mdp.reward = {
-        s: {a: random.uniform(-num_states*num_actions, num_states*num_actions) for a in actlist}
+        s: {a: random.uniform(0, num_states*num_actions) for a in actlist} # only allow positive rewards
         for s in states
     }
     return mdp
 
-
-def add_noise_to_transition(transition_function, noise_level):
+def get_rectangular_set_act(mdp, action, epsilon):
     """
-    Adds noise to an MDP transition function.
+    Generates an ε-rectangular set of transition functions.
 
     Parameters:
-    - transition_function: dict[state][action] -> numpy array of probabilities
-    - states: list of all possible states
+    P : numpy array (S, A, S)
+        Original transition probability matrix where P[s, a, s'] = P(s' | s, a)
+    epsilon : float
+        Maximum allowable deviation from original probabilities
+
+    Returns:
+    P_min : numpy array (S, A, S)
+        Lower bound of transition probabilities
+    P_max : numpy array (S, A, S)
+        Upper bound of transition probabilities
+    """
+    P = mdp[action] # the transition matrix given action a
+
+    # Compute lower and upper bounds
+    P_min = np.maximum(P - epsilon, 0)  # Ensure non-negative probabilities
+    P_max = np.minimum(P + epsilon, 1)  # Ensure probabilities don't exceed 1
+
+    # Normalize each transition probability set to sum to 1
+    for s in mdp.states:
+        P_min[s, :] /= P_min[s, :].sum() if P_min[s, :].sum() > 0 else 1
+        P_max[s, :] /= P_max[s, :].sum() if P_max[s, :].sum() > 0 else 1
+    return P_min, P_max
+
+def get_rectangular_set(mdp, noise_level):
+    """
+      Compute the rectangular uncertainty set
+
+    Parameters:
+    - mdp: the original MDP.
     - noise_level: float, fraction of probability mass to redistribute (e.g., 0.1 for 10%)
 
     Returns:
-    - noisy_transition_function: dict with noise added
+    - P_min, P_max are both dictionary objects.
+    P_min[a] is the lower bound of the Transition Probabilities for action a.
+    P_max[a] is the upper bound on Transition Probabilities of action a.
     """
-    noisy_transition_function = {}
-    num_states = len(trans)
+    P_min = {}
+    P_max = {}
+    for act in mdp.actlist:
+        P_min[act], P_max[act] = get_rectangular_set_act(mdp, act, noise_level)
+    return P_min, P_max
 
-    for state in transition_function:
-        noisy_transition_function[state] = {}
-        for action in transition_function[state]:
-            # Get original probabilities
-            original_probs = transition_function[state][action]
+def sample_k_trans(mdp, K, epsilon):
+    """
 
-            # Redistribute noise uniformly
-            uniform_noise = np.full(num_states, noise_level / num_states)
-            adjusted_probs = (1 - noise_level) * original_probs + uniform_noise
+    :param mdp: original MDP
+    :param K: K different transitions in rectangular uncertainty set
+    :param noise_level:  float, fraction of probability mass to redistribute (e.g., 0.1 for 10%)
+    :return:
+    """
+    samples = []
+    for i in range(K):
+        P_sample = {a:np.zeros_like(mdp.prob[a]) for a in mdp.actlist}
+        for a in mdp.actlist:
+            temp = np.copy(mdp.prob[a])
+            # Generate perturbations within the ε-range
+            perturbation = np.random.uniform(-epsilon, epsilon, size=temp.shape)
+            temp  += perturbation  # Apply perturbation
+        # Ensure probabilities remain in valid range [0,1]
+            P_sample[a] = np.clip(temp, 0, 1)
 
-            # Normalize to ensure sum is 1
-            adjusted_probs /= np.sum(adjusted_probs)
-
-            # Update noisy transition function
-            noisy_transition_function[state][action] = adjusted_probs
-
-    return noisy_transition_function
-def generate_k_trans(k, trans):
-    trans_list = []
-    noise_level_list = random.sample(range(0.0001, k/10), k)
-    for noise_level in noise_level_list:
-        trans_list.append(add_noise_to_transition(trans, noise_level))
-
+        # Normalize each transition probability to sum to 1
+            for s in mdp.states:
+                P_sample[a][s, :] /= P_sample[a][s, :].sum() if P_sample[a][s, :].sum() > 0 else 1
+        samples.append(P_sample)
+    return samples
 
 
 

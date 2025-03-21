@@ -54,6 +54,8 @@ class MDP:
         j = self.states.index(next_state)
         return self.prob[action][i, j]
 
+
+
     def actlist(self, state):
         "Compute a set of enabled actlist from a given state"
         N = len(self.states)
@@ -132,15 +134,16 @@ class MDP:
         graph = Dot(graph_type='digraph', rankdir='LR')
         nodes = {}
         for state in self.states:
-            if state == self.init:
+            if True:#tstate == self.init:
+                pass
                 # color start state with green
-                initial_state_node = Node(
-                       str(state),
-                        style='filled',
-                        peripheries=2,
-                        fillcolor='#66cc33')
-                nodes[str(state)] = initial_state_node
-                graph.add_node(initial_state_node)
+                # initial_state_node = Node(
+                #        str(state),
+                #         style='filled',
+                #         peripheries=2,
+                #         fillcolor='#66cc33')
+                # nodes[str(state)] = initial_state_node
+                # graph.add_node(initial_state_node)
             else:
                 state_node = Node(str(state))
                 nodes[str(state)] = state_node
