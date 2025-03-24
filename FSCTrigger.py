@@ -12,7 +12,7 @@ class FSCTrigger:
         self.get_memory_transition(mdp,K)
 
 
-    def get_memory_transition(self,mdp, k):
+    def get_memory_transition(self, mdp, k):
         self.trans = {}
         self.memory_space = ['l']
         pointer = 0

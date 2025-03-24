@@ -38,6 +38,7 @@ class MDP:
         self.reward = dict([])
         self.act_len = len(actlist)
         self.theta_size = len(actlist) * len(states)
+        self.reward = reward
 
     def R(self, state):
         "Return a numeric reward for this state."
@@ -262,6 +263,8 @@ def stotrans_list(transition):
             transition_list[st][act] = st_list
             transition_pro[st][act] = pro_list
     return transition_list, transition_pro
+
+
 
 
 
