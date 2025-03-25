@@ -28,17 +28,16 @@ class MDP:
         identified by an index between 0 -N.  L: the labeling
         function, implemented as a dictionary: state: a subset of AP."""
 
-    def __init__(self, init=None, actlist=[], states=[], prob=dict([]), trans=dict([]), reward = dict([])):
+    def __init__(self, init=None, actlist=[], states=[], prob=dict([]), trans=dict([]), reward = dict([]), gamma = 0.95):
         self.init = init
         self.actlist = actlist
         self.states = states
         self.prob = prob
         self.trans = trans #alternative for prob
         self.suppDict = dict([])
-        self.reward = dict([])
-        self.act_len = len(actlist)
         self.theta_size = len(actlist) * len(states)
         self.reward = reward
+        self.gamma = gamma
 
     def R(self, state):
         "Return a numeric reward for this state."
@@ -166,17 +165,107 @@ class MDP:
             graph.write_png(path)
         return graph
 
+    def init_value(self):
+        #Initial the value to be all 0
+        return np.zeros(len(self.states))
+
+    def getcore(self, V, st, act):
+        core = 0
+        for st_, pro in self.trans[st][act].items():
+            if st_ != "Sink":
+                core += pro * V[self.states.index(st_)]
+        return core
+
+    def policy_evaluation(self, policy):
+        threshold = 0.0001
+        V = self.init_value()
+        delta = np.inf
+
+        while delta > threshold:
+            V1 = V.copy()
+            for st in self.states:
+                state_value = 0
+                for act_idx, act_prob in enumerate(policy[st]):
+                    if act_prob == 0:  # Skip zero-probability actions for efficiency
+                        continue
+
+                    act = self.actlist[act_idx]
+
+                    # Handle both reward[s] and reward[s][a] cases
+                    try:
+                        current_reward = self.reward[st][act]  # Try state-action reward first
+                    except (TypeError, KeyError, IndexError):
+                        current_reward = self.reward[st]  # Fall back to state-only reward
+
+                    state_value += act_prob * (current_reward + self.gamma * self.getcore(V1, st, act))
+
+                V[self.states.index(st)] = state_value
+
+            delta = np.max(np.abs(V - V1))
+
+        return V
+
+    def value_iteration(self):
+        threshold = 0.0001
+        reward = self.reward
+
+        V = self.init_value()
+        delta = np.inf
+
+        while delta > threshold:
+            delta = 0
+            for st in self.states:
+                v = V[self.states.index(st)]
+                max_value = float('-inf')
+                for act in self.actlist:
+                    if act in reward[st]:
+                        value = reward[st][act] + self.gamma * self.getcore(V, st, act)
+                        max_value = max(max_value, value)
+
+                V[self.states.index(st)] = max_value
+                delta = max(delta, abs(v - V[self.states.index(st)]))
+
+        # Compute the optimal policy
+        policy = {}
+        for st in self.states:
+            Q = {}
+            for act in self.actlist:
+                if act in reward[st] and act in self.trans[st]:
+                    Q[act] = reward[st][act] + self.gamma * self.getcore(V, st, act)
+
+            max_q = max(Q.values())
+            best_actions = [a for a, q in Q.items() if q == max_q]
+            action_probs = {a: 1.0 / len(best_actions) if a in best_actions else 0.0 for a in self.actlist}
+            policy[st] = action_probs
+
+        return V, policy
+
 
     #policy gradient, in the algorithm define two mdps: M0 with R0 and Mp with Rp
-    def reward_traj(self, traj, flag):
-        reward = self.reward
+    def reward_traj(self, traj):
+        def get_reward(state, action):
+            """Smart reward accessor with error handling"""
+            state_reward = self.reward.get(state, 0.0)  # Default to 0 for missing states
+
+            if isinstance(state_reward, dict):
+                # State-action reward format
+                return state_reward.get(action, 0.0)  # Default to 0 for missing actions
+            elif isinstance(state_reward, (int, float)):
+                # State-only reward format (ignore action)
+                return state_reward
+            else:
+                # Handle invalid reward types
+                raise TypeError(f"Invalid reward type {type(state_reward)} for state {state}")
         st = traj[0]
         act = traj[1]
+        reward = get_reward(st,act)
         if len(traj) >= 4:
-            r = reward[st][act] + self.gamma * self.reward_traj(traj[2:], flag)
+            r = reward + self.gamma * self.reward_traj(traj[2:])
         else:
-            return reward[st][act]
+            return reward
         return r
+
+
 
     def dJ_dtheta(self, Sample, policy):
         # grdient of value function respect to theta
@@ -186,7 +275,7 @@ class MDP:
         grad = 0
         for rho in Sample.trajlist:
             # print("trajectory is:", rho)
-            grad += self.drho_dtheta(rho, policy) * self.reward_traj(rho, 0)
+            grad += self.drho_dtheta(rho, policy) * self.reward_traj(rho)
             # print(self.drho_dtheta(rho))
         # print("grad is:", grad)
         return 1 / N * grad
@@ -200,17 +289,18 @@ class MDP:
         return self.dPi_dtheta(st, act, policy) + self.drho_dtheta(rho, policy)
 
     def dPi_dtheta(self, st, act, policy):
+        tau = 0.1
         # dlog(pi)_dtheta
         grad = np.zeros(self.theta_size)
         st_index = self.states.index(st)
         act_index = self.actlist.index(act)
         Pi = policy[st]
         # print("Pi:", Pi)
-        for i in range(self.act_len):
+        for i in range(len(self.actlist)):
             if i == act_index:
-                grad[st_index * self.act_len + i] = 1 / self.tau * (1.0 - Pi[i])
+                grad[st_index * len(self.actlist) + i] = 1 / tau * (1.0 - Pi[i])
             else:
-                grad[st_index * self.act_len + i] = 1 / self.tau * (0.0 - Pi[i])
+                grad[st_index * len(self.actlist) + i] = 1 / tau * (0.0 - Pi[i])
         # grad is a vector x_size * 1
         return grad
 
@@ -224,9 +314,9 @@ class MDP:
         next_st = np.random.choice(len(st_list), 1, p=pro_list)[0]
         return st_list[next_st]
 
-    def generate_sample(self, pi, trans, num_pairs):
+    def generate_sample(self, pi, num_pairs):
         # pi here should be pi[st] = [pro1, pro2, ...]
-        st_lists, pro_lists = stotrans_list(trans)
+        st_lists, pro_lists = stotrans_list(self.trans)
         traj = []
         st_index = np.random.choice(len(self.states), 1, p=self.init)[0]
         st = self.states[st_index]

@@ -30,6 +30,7 @@ def generateMDP(num_states, num_actions):
     mdp.states = states
     mdp.actlist = actlist
     mdp.init = np.array(list(random_distribution(states).values()))
+    mdp.theta_size = num_states * num_actions
     N = len(mdp.states)
     for a in mdp.actlist:
         mdp.prob[a] = np.zeros((N, N))
@@ -45,34 +46,38 @@ def generateMDP(num_states, num_actions):
     #covert prob to trans
     mdp.trans = covert_P_to_trans(mdp, mdp.prob)
 
-
     mdp.reward = {
         s: {a: random.uniform(0, num_states*num_actions) for a in actlist} # only allow positive rewards
         for s in states
     }
     return mdp
 
-def get_aug_mdp(num_states, num_actions,num_trans, epsilon, seed):
+def get_aug_mdp(num_states, num_actions,num_trans, epsilon):
     #pi0[s] = [p1,p2,p3,...]
-    random.seed(seed)
-    np.random.seed(seed)
 
-    mdp = generateMDP(num_states,num_actions)
-    states = mdp.states
+    mdp0 = generateMDP(num_states, num_actions)
+    states = mdp0.states
 
-    trans_samples = sample_k_trans(mdp,num_trans-1, epsilon)
-    trans_samples.insert(0, mdp.trans)
+    trans_samples = sample_k_trans(mdp0,num_trans-1, epsilon)
+    trans_samples.insert(0, mdp0.trans)
 
     mdp_attacker = MDP()
     mdp_attacker.states = states
     mdp_attacker.actlist = list(range(num_trans))
+    mdp_attacker.theta_size = num_states * num_trans
 
     mdp_attacker.reward = {
-        s: {a: random.uniform(0, num_states * num_actions) for a in mdp_attacker.actlist}  # only allow positive rewards
+        s: random.uniform(0, num_states * num_actions)  # only allow positive rewards
         for s in states
-    }
+    } #a simpler way is to define the reward to be state dependent, which makes the reward_traj easy to calculate, no information about agent action needed.
 
-    return trans_samples, mdp, mdp_attacker
+    mdp = MDP()
+    mdp.states = states
+    mdp.actlist = mdp0.actlist
+    mdp.theta_size = mdp0.theta_size
+    mdp.reward = mdp_attacker.reward
+
+    return trans_samples, mdp0, mdp, mdp_attacker
 
 
 
@@ -125,34 +130,57 @@ def get_rectangular_set(mdp, noise_level):
         P_min[act], P_max[act] = get_rectangular_set_act(mdp, act, noise_level)
     return P_min, P_max
 
-def sample_k_trans(mdp, K, epsilon):
-    """
+# def sample_k_trans(mdp, K, epsilon):
+#     """
+#
+#     :param mdp: original MDP
+#     :param K: K different transitions in rectangular uncertainty set
+#     :param noise_level:  float, fraction of probability mass to redistribute (e.g., 0.1 for 10%)
+#     :return:
+#     """
+#     samples = []
+#     for i in range(K):
+#         P_sample = {a:np.zeros_like(mdp.prob[a]) for a in mdp.actlist}
+#         for a in mdp.actlist:
+#             temp = np.copy(mdp.prob[a])
+#             # Generate perturbations within the ε-range w,r.t. mdp
+#             perturbation = np.random.uniform(-epsilon, epsilon, size=temp.shape)
+#             temp  += perturbation  # Apply perturbation
+#         # Ensure probabilities remain in valid range [0,1]
+#             P_sample[a] = np.clip(temp, 0, 1)
+#
+#         # Normalize each transition probability to sum to 1
+#             for s in mdp.states:
+#                 P_sample[a][s, :] /= P_sample[a][s, :].sum() if P_sample[a][s, :].sum() > 0 else 1
+#         samples.append(P_sample)
+#
+#     #covert P to trans (Xinyi)
+#     trans_samples = []
+#     for p in samples:
+#         trans_samples.append(covert_P_to_trans(mdp,p))
+#
+#     return trans_samples
 
-    :param mdp: original MDP
-    :param K: K different transitions in rectangular uncertainty set
-    :param noise_level:  float, fraction of probability mass to redistribute (e.g., 0.1 for 10%)
-    :return:
-    """
+
+def sample_k_trans(mdp, K, epsilon):
     samples = []
     for i in range(K):
-        P_sample = {a:np.zeros_like(mdp.prob[a]) for a in mdp.actlist}
+        P_sample = {}  # Move this line inside the loop
         for a in mdp.actlist:
+            P_sample[a] = np.zeros_like(mdp.prob[a])  # Initialize for each action
             temp = np.copy(mdp.prob[a])
-            # Generate perturbations within the ε-range w,r.t. mdp
             perturbation = np.random.uniform(-epsilon, epsilon, size=temp.shape)
-            temp  += perturbation  # Apply perturbation
-        # Ensure probabilities remain in valid range [0,1]
+            temp += perturbation
             P_sample[a] = np.clip(temp, 0, 1)
 
-        # Normalize each transition probability to sum to 1
+            # Normalize each transition probability to sum to 1
             for s in mdp.states:
                 P_sample[a][s, :] /= P_sample[a][s, :].sum() if P_sample[a][s, :].sum() > 0 else 1
+
         samples.append(P_sample)
 
-    #covert P to trans (Xinyi)
-    trans_samples = []
-    for p in samples:
-        trans_samples.append(covert_P_to_trans(mdp,p))
+    # Convert P to trans
+    trans_samples = [covert_P_to_trans(mdp, p) for p in samples]
 
     return trans_samples
 
@@ -171,7 +199,7 @@ def covert_P_to_trans(mdp, P):
             trans[s][a] = {}
             for ns in mdp.states:
                 # Get probability using matrix indices
-                trans[s][a][ns] = mdp.prob[a][mdp.states.index(s), mdp.states.index(ns)]
+                trans[s][a][ns] = P[a][mdp.states.index(s), mdp.states.index(ns)]
 
     return trans
 
@@ -233,7 +261,7 @@ if __name__ == "__main__":
         pi[state] = normalized_probs
 
 
-    testmdp2, testmdp2_attacker = get_aug_mdp(3,3,3, pi, ps)
+    trans, mdp0, testmdp2, testmdp2_attacker = get_aug_mdp(3,3,3, 0.1)
 
     print("State Space:")
     for state in testmdp1.states:
@@ -269,12 +297,15 @@ if __name__ == "__main__":
             print(f"  reward at state '{state}' and action '{action}' is {reward:.2f}")
 
 
+
+
     print("completing the MDP generation.")
 
     #test for function in MDP
 
     traj = testmdp1.generate_sample(pi,testmdp1.trans,3)
     print(traj)
+
 
 
 

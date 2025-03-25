@@ -14,10 +14,10 @@ class SampleTraj:
         self.mdp = mdp
         self.trajlist = []
     
-    def generate_traj(self, N, policy):
+    def generate_traj(self, N, num_pairs, policy):
         self.reset()
         for i in range(N):
-            traj  = self.mdp.generate_sample(policy, trans)
+            traj  = self.mdp.generate_sample(policy, num_pairs)
             self.trajlist.append(traj)
     
     def reset(self):
