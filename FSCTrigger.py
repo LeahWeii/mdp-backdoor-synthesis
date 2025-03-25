@@ -8,6 +8,7 @@ class FSCTrigger:
     def __init__(self,mdp,  K=2):
         # The length of memory
         self.K = K
+        self.init = None
         # The observations (the input of the finite state controller)
         self.get_memory_transition(mdp,K)
 
@@ -15,6 +16,7 @@ class FSCTrigger:
     def get_memory_transition(self,mdp, k):
         self.trans = {}
         self.memory_space = ['l']
+        self.init = 'l'
         pointer = 0
         while pointer < len(self.memory_space):
             memory_state = self.memory_space[pointer]

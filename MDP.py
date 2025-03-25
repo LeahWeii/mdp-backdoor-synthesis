@@ -6,7 +6,7 @@ __date__ = "23 August 2024"
 
 from scipy import stats
 import numpy as np
-
+import random
 from pydot import Dot, Edge, Node
 import copy
 
@@ -28,20 +28,40 @@ class MDP:
         identified by an index between 0 -N.  L: the labeling
         function, implemented as a dictionary: state: a subset of AP."""
 
-    def __init__(self, init=None, actlist=[], states=[], prob=dict([]), trans=dict([]), reward = dict([])):
+    def __init__(self, init=None, actlist=[], states=[], prob=dict([]), trans=dict([]), reward = dict([]), gamma=0.9):
         self.init = init
         self.actlist = actlist
         self.states = states
         self.prob = prob
         self.trans = trans #alternative for prob
         self.suppDict = dict([])
-        self.reward = dict([])
+        if reward == dict([]):
+            self.reward = {s:{a:0 for a in actlist} for s in states}
+        else:
+            self.reward = reward
         self.act_len = len(actlist)
         self.theta_size = len(actlist) * len(states)
+        self.gamma = gamma
 
-    def R(self, state):
-        "Return a numeric reward for this state."
-        return self.reward[state]
+
+    def get_init_vec(self):
+        if type(self.init) == np.array:
+            self.init_vec = self.init
+        else:
+            temp = np.zeros(len(self.states), dtype=int)
+            index = self.states.index(self.init)
+            temp[index] = 1
+            self.init_vec = temp
+        return
+
+    def getRewardMatrix(self):
+        self.reward_matrix = np.zeros((len(self.states), len(self.actlist)))
+        for s in self.states:
+            for a in self.actlist:
+                s_idx = self.states.index(s)
+                act_idx = self.actlist.index(a)
+                self.reward_matrix[s_idx, act_idx] = self.reward[s][a]
+        return
 
     def T(self, state, action):
         """Transition model.  From a state and an action, return a row in the matrix for next-state probability."""
@@ -54,9 +74,13 @@ class MDP:
         j = self.states.index(next_state)
         return self.prob[action][i, j]
 
+    def assign_P(self, state, action, next_state, p):
+        i = self.states.index(state)
+        j = self.states.index(next_state)
+        self.prob[action][i,j] = p
+        return
 
-
-    def actlist(self, state):
+    def act(self, state):
         "Compute a set of enabled actlist from a given state"
         N = len(self.states)
         S = set([])
@@ -115,7 +139,7 @@ class MDP:
 
     def sample(self, state, action, num=1):
         """Sample the next state according to the current state, the action, and the transition probability. """
-        if action not in self.actlist(state):
+        if action not in self.act(state):
             return None  # Todo: considering adding the sink state
         N = len(self.states)
         i = self.states.index(state)
@@ -167,14 +191,11 @@ class MDP:
 
 
     #policy gradient, in the algorithm define two mdps: M0 with R0 and Mp with Rp
-    def reward_traj(self, traj, flag):
-        reward = self.reward
-        st = traj[0]
-        act = traj[1]
-        if len(traj) >= 4:
-            r = reward[st][act] + self.gamma * self.reward_traj(traj[2:], flag)
+    def reward_traj(self, traj):
+        if len(traj) > 1:
+            r = traj[0][-1] + self.gamma * self.reward_traj(traj[1:])
         else:
-            return reward[st][act]
+            return traj[0][-1]
         return r
 
     def dJ_dtheta(self, Sample, policy):
@@ -214,6 +235,14 @@ class MDP:
         return grad
 
     #generate samples
+
+    def step(self, state, action):
+        """Simulate a transition given a state and action."""
+        next_state = random.choices(
+            self.states, weights= self.prob[action][self.states.index(state), :], k=1)[0]
+        reward = self.reward[state][action]
+        return next_state, reward
+
     def one_step_transition(self, st, act, st_lists, pro_lists):
 
         st_list = st_lists[st][act]
@@ -223,48 +252,75 @@ class MDP:
         next_st = np.random.choice(len(st_list), 1, p=pro_list)[0]
         return st_list[next_st]
 
-    def generate_sample(self, pi, trans, num_pairs):
+
+    def generate_sample(self, policy, max_steps=10):
         # pi here should be pi[st] = [pro1, pro2, ...]
-        st_lists, pro_lists = stotrans_list(trans)
         traj = []
-        st_index = np.random.choice(len(self.states), 1, p=self.init)[0]
-        st = self.states[st_index]
-        act_index = np.random.choice(len(self.actlist), 1, p=pi[st])[0]
-        act = self.actlist[act_index]
-        traj.append(st)
-        traj.append(act)
-        next_st = self.one_step_transition(st, act, st_lists, pro_lists)
-        for _ in range(0, num_pairs):
-            st = next_st
+        self.get_init_vec()
+        st= random.choices(self.states, weights=self.init_vec, k=1)[0]
+        for _ in range(max_steps):
             # st_index = self.states.index(st)
-            act_index = np.random.choice(len(self.actlist), 1, p=pi[st])[0]
-            act = self.actlist[act_index]
-            traj.append(st)
-            traj.append(act)
-            next_st = self.one_step_transition(st, act, st_lists, pro_lists)
-        traj.append(next_st)
+            act = random.choices(self.actlist, weights=policy.policy[st], k=1)[0]
+            next_state, step_reward = self.step(st, act)
+            traj.append((st, act, next_state, step_reward))
+            st = next_state
         return traj
 
-def stotrans_list(transition):
-    transition_list = {}
-    transition_pro = {}
-    for st in transition:
-        transition_list[st] = {}
-        transition_pro[st] = {}
-        for act in transition[st]:
-            transition_list[st][act] = {}
-            transition_pro[st][act] = {}
-            st_list = []
-            pro_list = []
-            for st_, pro in transition[st][act].items():
-                st_list.append(st_)
-                pro_list.append(pro)
-            transition_list[st][act] = st_list
-            transition_pro[st][act] = pro_list
-    return transition_list, transition_pro
+    def generate_samples(self, policy, max_num = 10, max_steps=10):
+        samples = []
+        for _ in range(max_num):
+            traj = self.generate_sample(policy, max_steps)
+            samples.append(traj)
+        return samples
 
 
 
 
+class Policy:
+    def __init__(self, states, actlist, deterministic=True, policy=None):
+        """
+        Initialize a policy for an MDP.
 
+        :param state_space: List or range of states in the MDP.
+        :param action_space: List or range of possible actions.
+        :param deterministic: Boolean indicating whether the policy is deterministic or stochastic.
+        """
+        self.states = states
+        self.actlist = actlist
+        self.deterministic = deterministic
 
+        if policy==None:
+            if deterministic:
+                # Deterministic policy maps each state to a single action
+                self.policy = {state: np.random.choice(self.actlist) for state in self.states}
+            else:
+                # Stochastic policy assigns a probability distribution over actions for each state
+                self.policy ={state: np.ones(len(self.actlist)) / len(self.actlist) for state in self.states}
+                     # uniform distribution
+        else:
+            self.policy = policy
+
+    def get_action(self, state):
+        """Returns an action based on the current policy."""
+        if self.deterministic:
+            return self.policy[state]
+        else:
+            pvec =self.policy[state]
+            return np.random.choice(self.actlist, p=pvec)
+
+    def update_policy(self, state, action, p):
+        """
+        Update the policy for a given state.
+
+        :param state: The state to update the policy for.
+        :param: If deterministic, a single action. If stochastic, a probability of an action
+        """
+        if self.deterministic:
+            self.policy[state] = action  # Single action
+        else:
+            act_id = self.actlist.index(action)
+            self.policy[state][act_id] = p
+
+    def update_policy_actions(self, state, pvec):
+        self.policy[state]= pvec
+        return

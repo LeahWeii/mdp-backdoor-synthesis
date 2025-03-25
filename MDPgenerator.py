@@ -28,7 +28,8 @@ def generateMDP(num_states, num_actions):
     mdp = MDP()
     mdp.states = states
     mdp.actlist = actlist
-    mdp.init = np.array(list(random_distribution(states).values()))
+    # mdp.init = np.array(list(random_distribution(states).values()))
+    mdp.init  = random.choice(mdp.states)
     N = len(mdp.states)
     for a in mdp.actlist:
         mdp.prob[a] = np.zeros((N, N))
@@ -52,6 +53,7 @@ def generateMDP(num_states, num_actions):
         s: {a: random.uniform(0, num_states*num_actions) for a in actlist} # only allow positive rewards
         for s in states
     }
+    mdp.getRewardMatrix()
     return mdp
 
 def get_rectangular_set_act(mdp, action, epsilon):
@@ -113,9 +115,10 @@ def sample_k_trans(mdp, K, epsilon):
     for i in range(K):
         P_sample = {a:np.zeros_like(mdp.prob[a]) for a in mdp.actlist}
         for a in mdp.actlist:
+            nonzero_indices = mdp.prob[a] > 0
             temp = np.copy(mdp.prob[a])
             # Generate perturbations within the ε-range
-            perturbation = np.random.uniform(-epsilon, epsilon, size=temp.shape)
+            perturbation = np.random.uniform(-epsilon, epsilon, size=temp.shape) * nonzero_indices
             temp  += perturbation  # Apply perturbation
         # Ensure probabilities remain in valid range [0,1]
             P_sample[a] = np.clip(temp, 0, 1)
