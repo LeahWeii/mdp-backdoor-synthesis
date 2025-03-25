@@ -63,7 +63,8 @@ def get_aug_mdp(num_states, num_actions,num_trans, epsilon):
 
     mdp_attacker = MDP()
     mdp_attacker.states = states
-    mdp_attacker.actlist = list(range(num_trans))
+    alphabet = list(string.ascii_lowercase)
+    mdp_attacker.actlist = alphabet[:num_trans]
     mdp_attacker.theta_size = num_states * num_trans
 
     mdp_attacker.reward = {

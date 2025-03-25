@@ -1,3 +1,5 @@
+import random
+
 import Sample
 from MDPgenerator import *
 import math
@@ -25,7 +27,7 @@ def update_trans_attacker(mdp, mdp_attacker, trans_samples, pi0):
             for ns in states:
                 mdp_attacker.trans[s][a1][ns] = 0
                 for a0 in actlist:
-                    mdp_attacker.trans[s][a1][ns] += pi0[s][actlist.index(a0)] * trans_samples[a1][s][a0][ns]
+                    mdp_attacker.trans[s][a1][ns] += pi0[s][actlist.index(a0)] * trans_samples[mdp_attacker.actlist.index(a1)][s][a0][ns]
 
 def update_trans(mdp, trans_list, pi1):
     #pi1[s] = [p1, p2, ...], assume we use markov trigger
@@ -140,6 +142,8 @@ def GD(trans_list, mdp0,mdp,mdp_attacker):
     theta1 = np.zeros(mdp_attacker.theta_size)
 
     ref_v = math.inf
+    count = 0
+    objs = []
     while True:
         policy0 = theta_to_policy(mdp0,theta0)
         v = mdp0.policy_evaluation(policy0)
@@ -150,35 +154,44 @@ def GD(trans_list, mdp0,mdp,mdp_attacker):
             sample_mdp = Sample.SampleTraj(mdp)
             sample_mdp.generate_traj(n, num_pairs, policy0)  # for V1
             g = mdp.dJ_dtheta(sample_mdp, policy0)
-            print(g)
-            theta0 += 0.1*g
+            theta0 += 1 * math.exp(-0.0001 * (count - 1))*g
 
             update_trans_attacker(mdp, mdp_attacker, trans_list, policy0)
-            g_attacker = mdp_attacker.dJ_dtheta(sample_mdp, policy1)  # dim error
-            print(g_attacker)
-            theta1 += 0.0001*g_attacker
+            g_attacker = mdp_attacker.dJ_dtheta(sample_mdp, policy1)  # if num_trans<num_actions, there will be error due to reward is only state dependent
+            theta1 += 0.0001* math.exp(-0.0001 * (count - 1))*g_attacker
+
         else: #violation
             policy0 = theta_to_policy(mdp0, theta0)
             sample_mdp0 = Sample.SampleTraj(mdp0)
             sample_mdp0.generate_traj(n, num_pairs, policy0)
             g0 = mdp0.dJ_dtheta(sample_mdp0, policy0)
-            print(g0)
-            theta0 += 0.1*g
+            theta0 += 1* math.exp(-0.0001 * (count - 1)) * g0
+
         update_trans(mdp, trans_list, policy1)
         new_v = mdp.policy_evaluation(policy0)
         new_v = np.dot(new_v, init)
-        if abs(new_v-ref_v)<1e-7:
+        if count%10 ==0:
+            print(count)
+        count += 1
+        if abs(new_v-ref_v)<1e-7 or count>=10000:
             break
         else:
             ref_v = new_v
+            objs.append(ref_v)
 
-
+    np.save('results/objs.npy',np.array(objs))
 
 
 
 if __name__ == "__main__":
-
-    trans_list, mdp0, mdp, mdp_attacker = get_aug_mdp(3,3,4, 0.5)
+    random.seed(1)
+    np.random.seed(1)
+    trans_list, mdp0, mdp, mdp_attacker = get_aug_mdp(3,3,3, 0.5)
+    with open('saved_objects.pkl', 'wb') as f:
+        pickle.dump(trans_list, f)
+        pickle.dump(mdp0, f)
+        pickle.dump(mdp, f)
+        pickle.dump(mdp_attacker, f)
 
     GD(trans_list, mdp0,mdp,mdp_attacker)
 
