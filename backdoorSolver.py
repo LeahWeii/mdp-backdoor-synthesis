@@ -179,6 +179,9 @@ def switchingGradient(mdp, adv_reward, trigger, augmdp, K,  episodes=1000, learn
     V0_iter= []
     V1_iter= []
     sample_size = 50
+    V_original, pol0_opt =   valueIter(mdp, tau)
+    initial = mdp.states.index(mdp.init) # deterministic initial state.
+    print("The optimal value under the original MDP is", V_original[initial])
     for episode in range(episodes):
         V0 = policyEval(mdp, pol0)
         if V0[mdp.states.index(mdp.init)] < lb: # performance is worse than lower bound, constraint is violated.
@@ -209,11 +212,11 @@ def switchingGradient(mdp, adv_reward, trigger, augmdp, K,  episodes=1000, learn
             theta1 += learning_rate2 * grad_pol1_1  # Update step
             if np.linalg.norm(grad_pol0_1, ord=np.inf) < tolerance and np.linalg.norm(grad_pol1_1, ord=np.inf) < tolerance:  # Stop if gradient is too small
                 break
-            V1 = policyEval(augmdp, get_joint_policy(augmdp, pol0, pol1))
+            V1 = policyEval(augmdp,  get_joint_policy(augmdp, pol0, pol1))
             V1_iter.append(V1[augmdp.states.index(augmdp.init)])
             print("The value of the attacker's MDP under trigger:", V1[augmdp.states.index(augmdp.init)])
             #input("Press Enter to continue...")
-            V0 =  policyEval(mdp, pol0)
+            V0 =  policyEval(mdp,  pol0)
             V0_iter.append(V0[mdp.states.index(mdp.init)])
             print("The value for the original MDP:", V0[mdp.states.index(mdp.init)])
             #   if episode % 100 == 0:

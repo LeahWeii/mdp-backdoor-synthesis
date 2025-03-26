@@ -118,7 +118,7 @@ def sample_k_trans(mdp, K, epsilon):
             nonzero_indices = mdp.prob[a] > 0
             temp = np.copy(mdp.prob[a])
             # Generate perturbations within the ε-range
-            perturbation = np.random.uniform(-epsilon, epsilon, size=temp.shape) * nonzero_indices
+            perturbation = np.round(np.random.uniform(-epsilon, epsilon, size=temp.shape) * nonzero_indices, 2)
             temp  += perturbation  # Apply perturbation
         # Ensure probabilities remain in valid range [0,1]
             P_sample[a] = np.clip(temp, 0, 1)
@@ -126,6 +126,7 @@ def sample_k_trans(mdp, K, epsilon):
         # Normalize each transition probability to sum to 1
             for s in mdp.states:
                 P_sample[a][s, :] /= P_sample[a][s, :].sum() if P_sample[a][s, :].sum() > 0 else 1
+            print("the difference", np.linalg.norm(P_sample[a]-mdp.prob[a],ord=np.inf))
         samples.append(P_sample)
     return samples
 

@@ -9,7 +9,7 @@ import numpy as np
 import random
 from pydot import Dot, Edge, Node
 import copy
-
+import pickle
 
 
 class MDP:
@@ -149,7 +149,7 @@ class MDP:
 
 
 
-    def show_diagram(self, path='./graph.png'):  # pragma: no cover
+    def show_diagram(self, dotpath = './dot_file.pkl', path='./graph.png'):  # pragma: no cover
         """
             Creates the graph associated with this MDP
         """
@@ -158,16 +158,15 @@ class MDP:
         graph = Dot(graph_type='digraph', rankdir='LR')
         nodes = {}
         for state in self.states:
-            if True:#tstate == self.init:
-                pass
+            if  state == self.init:
                 # color start state with green
-                # initial_state_node = Node(
-                #        str(state),
-                #         style='filled',
-                #         peripheries=2,
-                #         fillcolor='#66cc33')
-                # nodes[str(state)] = initial_state_node
-                # graph.add_node(initial_state_node)
+                initial_state_node = Node(
+                        str(state),
+                         style='filled',
+                         peripheries=2,
+                         fillcolor='#66cc33')
+                nodes[str(state)] = initial_state_node
+                graph.add_node(initial_state_node)
             else:
                 state_node = Node(str(state))
                 nodes[str(state)] = state_node
@@ -179,7 +178,7 @@ class MDP:
                 for next_state in self.states:
                     j  = self.states.index(next_state)
                     if self.prob[act][i,j] != 0:
-                        weight = self.prob[act][i,j]
+                        weight = np.round(self.prob[act][i,j],2)
                         graph.add_edge(Edge(
                             nodes[str(state)],
                             nodes[str(next_state)],
@@ -187,6 +186,10 @@ class MDP:
                         ))
         if path:
             graph.write_png(path)
+
+        with open(dotpath, "wb") as file1:  # "wb" means write in binary mode
+            pickle.dump(self, file1)
+
         return graph
 
 

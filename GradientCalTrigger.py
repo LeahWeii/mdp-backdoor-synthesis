@@ -116,14 +116,15 @@ class GradientCalTrigger:
         # dlog(pi)_dtheta
         grad = np.zeros(self.y_size)
         st_index = self.policy.states.index(st[self.player_id]) # the local state index and action index for the player i'
-        act_index = self.policy.actlist.index(act)
+        act_index = self.policy.actlist.index(act[self.player_id]) # change.
         Pi = self.policy.policy[st[self.player_id]]
         # print("Pi:", Pi)
-        for i in range(self.act_len):
+        act_len = len(self.policy.actlist)
+        for i in range(act_len):
             if i == act_index:
-                grad[st_index * self.act_len + i] = 1 / self.tau * (1.0 - Pi[i])
+                grad[st_index * act_len + i] = 1 / self.tau * (1.0 - Pi[i])
             else:
-                grad[st_index * self.act_len + i] = 1 / self.tau * (0.0 - Pi[i])
+                grad[st_index * act_len + i] = 1 / self.tau * (0.0 - Pi[i])
         # grad is a vector y_size * 1
         return grad
 
