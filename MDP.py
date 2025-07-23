@@ -146,6 +146,7 @@ class MDP:
         next_index = np.random.choice(N, num, p=self.prob[action][i, :])[
             0]  # Note that only one element is chosen from the array, which is the output by random.choice
         return self.states[next_index]
+    
 
 
 
@@ -241,6 +242,8 @@ class MDP:
 
     def step(self, state, action):
         """Simulate a transition given a state and action."""
+        if self.prob[action][self.states.index(state),:].sum()==0:
+            print('incorrect')
         next_state = random.choices(
             self.states, weights= self.prob[action][self.states.index(state), :], k=1)[0]
         reward = self.reward[state][action]

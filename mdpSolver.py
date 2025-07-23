@@ -27,7 +27,7 @@ def valueIter(mdp, temperature =1,  epsilon=0.1):
             value  = np.array([mdp.reward[s][a]+mdp.gamma*mdp.prob[a][s_idx,:].dot(V_old) for a in mdp.actlist])
             pvec = softmax(value, temperature)
             pol.policy[s] = pvec
-            V[s]  = np.inner(value, pvec) # the inner product given the updated value
+            V[s_idx]  = np.inner(value, pvec) # the inner product given the updated value
         if np.linalg.norm(V-V_old, np.inf) <= epsilon:
             break
     return V, pol

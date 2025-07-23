@@ -30,7 +30,7 @@ for prob in sampledTrans:
     count += 1
 mdp1.show_diagram('ex2/figs/original_mdp_dot.png', 'ex2/figs/original_mdp_graph.png')
 
-trigger = FSCTrigger(mdp1, k)
+trigger = FSCTrigger(mdp1, k, 2)
 # constructing the transition function of the trigger.
 
 augmdp = backdoorSolver_Adam.get_augMDP(mdp1, trigger, sampledMDPs, adv_reward)
@@ -40,6 +40,6 @@ augmdp = backdoorSolver_Adam.get_augMDP(mdp1, trigger, sampledMDPs, adv_reward)
 
 # warm-starting part
 epsilon = 0.05
-backdoorSolver_Adam.switchingGradient_no_marginalization(mdp1, epsilon, adv_reward, trigger, augmdp, k, './ex2')
+backdoorSolver_Adam.switchingGradient_no_marginalization(mdp1, epsilon, adv_reward, trigger, augmdp, k, './ex_memory_4')
 
 print("complete ...")

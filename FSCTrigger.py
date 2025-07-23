@@ -1,13 +1,14 @@
 import itertools
 import numpy as np
 
-
+import re
 
 class FSCTrigger:
 
-    def __init__(self,mdp,  K=2):
+    def __init__(self,mdp,  K=2, memory_size =2):
         # The length of memory
         self.K = K
+        self.memory_size = memory_size
         self.actlist = list(range(K))
         self.init = None
         # The observations (the input of the finite state controller)
@@ -17,6 +18,12 @@ class FSCTrigger:
 
 
     def get_memory_transition(self,mdp, k):
+        """
+
+        :param mdp: original MDP
+        :param k: number of actions
+        :return: transition dynamics.
+        """
         self.trans = {}
         self.states = ['l']
         self.init = 'l'
@@ -37,7 +44,7 @@ class FSCTrigger:
                     for ns in mdp.states:
                         if mdp.P(s,a,ns) !=0:
                             temp_m = " ".join([memory_state, str(ns)])
-                            new_m = " ".join(temp_m.split()[-k:])
+                            new_m = " ".join(temp_m.split()[-self.memory_size:])
                             if new_m not in self.states:
                                 self.states.append(new_m)
                             self.trans[memory_state][(s,a,ns)] = new_m
