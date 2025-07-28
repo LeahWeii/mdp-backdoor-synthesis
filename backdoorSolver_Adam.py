@@ -389,14 +389,14 @@ def switchingGradient_no_marginalization(mdp,epsilon, adv_reward, trigger, augmd
         else:
             if episode% 100 == 0:
                 print("The constraint is satisfied: V0 is", V0[mdp.states.index(mdp.init)])
-            samples  = augmdp.generate_samples(joint_policy, sample_size)
+            samples, obs_samples  = augmdp.generate_samples(joint_policy, sample_size) #TODO: ADD OBSERVED SAMPLES.
             GradientCal1_0 = GradientCalTrigger.GradientCalTrigger(augmdp, 0, pol0,  tau, adv_reward)
             grad_pol0_1 = GradientCal1_0.dJ_dtheta(samples)  # gradient ascent one step in the marginalized MDP with policy 1.
             moment00 += grad_pol0_1 ** 2
             theta0 += lr * grad_pol0_1 / (np.sqrt(moment00) + small_epsilon)  # Update step
             # compute the gradient for policy 1
             GradientCal1_1 = GradientCalTrigger.GradientCalTrigger(augmdp, 1, pol1, tau, adv_reward)
-            grad_pol1_1 = GradientCal1_1.dJ_dtheta(samples)  # gradient ascent one step in the marginalized MDP with policy 1.
+            grad_pol1_1 = GradientCal1_1.dJ_dtheta(obs_samples)  # TODO: observed_samples. # gradient ascent one step in the marginalized MDP with policy 1.
             moment01 += grad_pol1_1 ** 2
             theta1 += lr * grad_pol1_1 / (np.sqrt(moment01) + small_epsilon)  # Update step
             # theta1 += learning_rate2 * grad_pol1_1  # Update step

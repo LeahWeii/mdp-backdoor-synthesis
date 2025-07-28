@@ -262,14 +262,19 @@ class MDP:
     def generate_sample(self, policy, max_steps=10):
         # pi here should be pi[st] = [pro1, pro2, ...]
         traj = []
+        obs_traj = [] # Todo
         self.get_init_vec()
         st= random.choices(self.states, weights=self.init_vec, k=1)[0]
+        obs_st = self.obs(st)  # observation. #TODO
         for _ in range(max_steps):
             # st_index = self.states.index(st)
             act = random.choices(self.actlist, weights=policy.policy[st], k=1)[0]
             next_state, step_reward = self.step(st, act)
+            obs_next_state = self.obs(st) # observation. #TODO
             traj.append((st, act, next_state, step_reward))
+            obs_traj.append((obs_st, act, obs_next_state, step_reward))
             st = next_state
+            obs_st = obs_next_state  # observation. #TODO
         return traj
 
     def generate_samples(self, policy, max_num = 10, max_steps=10):
