@@ -71,6 +71,52 @@ class GradientCalTrigger:
         J = self.mdp.get_init_vec().dot(V)
         return J, policy
 
+    def dJ_dtheta_obs(self, trajlist):
+        # gradient of value function respect to theta
+        # sample based method
+        # returns dJ_dtheta_i, 1*NM matrix
+        N = len(trajlist)  # the total number of trajectories
+        grad = 0
+        for rho in trajlist:
+            # print("trajectory is:", rho)
+            grad += self.drho_dtheta_obs(rho) * self.mdp.reward_traj(rho)
+            # print(self.drho_dtheta(rho))
+        # print("grad is:", grad)
+        return 1 / N * grad
+
+    def drho_dtheta_obs(self, rho):
+        if len(rho) == 1:
+            return np.zeros(self.y_size)
+        st = rho[0][0]
+        act = rho[0][1]
+        rho = rho[1:]
+        # Handle partial observation: if state is None, gradient contribution is zero
+        if st is None or st[self.player_id] is None:
+            return self.drho_dtheta_obs(rho)
+        return self.dPi_dtheta_obs(st, act) + self.drho_dtheta_obs(rho)
+
+    def dPi_dtheta_obs(self, st, act):
+        # dlog(pi)_dtheta
+        grad = np.zeros(self.y_size)
+        # Handle partial observation: if state is not observed, return zero gradient
+        if st is None or st[self.player_id] is None:
+            return grad
+        # Check if the observed state is in the policy's state space
+        if st[self.player_id] not in self.policy.states:
+            # Handle unknown/unobserved states - could return zero or use a default policy
+            print(self.player_id, st[self.player_id])
+        st_index = self.policy.states.index(st[self.player_id])
+        act_index = self.policy.actlist.index(act[self.player_id])
+        Pi = self.policy.policy[st[self.player_id]]
+        act_len = len(self.policy.actlist)
+        for i in range(act_len):
+            if i == act_index:
+                grad[st_index * act_len + i] = 1 / self.tau * (1.0 - Pi[i])
+            else:
+                grad[st_index * act_len + i] = 1 / self.tau * (0.0 - Pi[i])
+        return grad
+
+
     def dJ_dtheta(self, trajlist):
         # grdient of value function respect to theta
         # sample based method

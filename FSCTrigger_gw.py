@@ -60,6 +60,7 @@ class FSCTriggerGW_finite:
 
 
     def get_memory_transition(self,mdp, k, memory_length):
+        trigger_states = mdp.states + [None]
         self.trans = {}
         self.states = ['l']
         self.init = 'l'
@@ -69,24 +70,29 @@ class FSCTriggerGW_finite:
             pointer += 1
             self.trans[memory_state] = {}
             if memory_state == 'l': # initialization
-                for s in mdp.states:
+                for s in trigger_states:
                     new_m = str([s])
                     self.trans[memory_state][new_m] = new_m
                     if new_m not in self.states:
                         self.states.append(new_m)
+
             else:
                 # print("the memory state is: ", memory_state)
                 matches  =   ast.literal_eval(memory_state)
                 s= matches[-1]  # the most recent state
                 for a in mdp.actlist:
-                    for ns in mdp.states:
-                        if mdp.P(s,a,ns) !=0:
-                            temp_m = matches+ [ns]
+                    for ns in trigger_states:
+                        if (s is None) or (ns is None) or (mdp.P(s, a, ns) != 0):
+                            temp_m = matches + [ns]
                             print(temp_m)
                             if len(temp_m) > memory_length:
                                 temp_m = temp_m[-memory_length:]
                             new_m = str(temp_m)
                             if new_m not in self.states:
                                 self.states.append(new_m)
-                            self.trans[memory_state][(s,a,ns)] = new_m
+                            self.trans[memory_state][(s, a, ns)] = new_m
+                        else:
+                            # Optionally log skipped transitions
+                            pass  # or: print(f"Skipped: ({s}, {a}, {ns})")
+
         return
