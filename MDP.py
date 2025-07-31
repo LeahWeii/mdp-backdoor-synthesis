@@ -312,15 +312,23 @@ class MDP:
 
         # Return the modified state
         return (observed_element, modified_list_string)
-    def generate_samples(self, policy, max_num = 10, max_steps=10):
+    def generate_samples(self, policy, memory_length, max_num = 10, max_steps=10):
         samples = []
         obs_samples = []
         for _ in range(max_num):
             traj= self.generate_sample(policy, max_steps)
             samples.append(traj)
-            obs_traj = convert_to_obs_traj(traj,0.8)
+            obs_traj = convert_to_obs_traj(traj, memory_length, 0.8)
             obs_samples.append(obs_traj)
         return samples, obs_samples
+
+    def generate_samples_player0(self, policy, max_num = 10, max_steps=10):
+        samples = []
+        obs_samples = []
+        for _ in range(max_num):
+            traj= self.generate_sample(policy, max_steps)
+            samples.append(traj)
+        return samples
 
 
 class Policy:
@@ -382,7 +390,7 @@ import random
 import ast
 import random
 
-def convert_to_obs_traj(traj, p=0.8):
+def convert_to_obs_traj(traj,k, p=0.8):
     """
     Convert a trajectory into observation trajectory with observation noise and finite memory.
 
@@ -396,7 +404,7 @@ def convert_to_obs_traj(traj, p=0.8):
     obs_traj = []
 
     # 🔐 Safe check: find the first valid memory string to extract k
-    k=3 #memory length
+     #memory length
 
     obs_memory = []
 

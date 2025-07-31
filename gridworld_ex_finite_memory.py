@@ -172,7 +172,7 @@ if __name__ == "__main__":
     # gridworld, V_def, policy = createGridWorldBarrier_new2()
     stoPar = 0.1
     gridworld = createGridWorldBarrier_new2(stoPar)
-
+    st = gridworld.states
     epsilon = 0.1
 
     stoPar_perturbed= [0.1, 0.3]
@@ -184,8 +184,9 @@ if __name__ == "__main__":
     #
     # with open("gridworld_ex/gridworlds_perturbed.pkl", "wb") as file2:  # "wb" means write in binary mode
     #     pickle.dump(gridworlds_perturbed, file2)
+    memory_length = 1
     k = len(gridworlds_perturbed)
-    trigger = FSCTriggerGW_finite(gridworld, k, 1)
+    trigger = FSCTriggerGW_finite(gridworld, k, 3)
     # constructing the transition function of the trigger.
     adversary_cost = get_adv_cost(trigger)
 
@@ -199,6 +200,7 @@ if __name__ == "__main__":
     epsilon = 0.2
     episodes_num = 10000
 
+
     # batch_test_switchingGradient(gridworld, adversary_reward, trigger, augmdp, k, './gridworld_ex', episodes=episodes_num, lr=0.01, tolerance=1e-2)
-    backdoorSolver_Adam.switchingGradient_no_marginalization(gridworld, epsilon,adversary_reward, trigger, augmdp, k, './gridworld_ex_fm', episodes_num)
+    backdoorSolver_Adam.switchingGradient_no_marginalization(gridworld, epsilon, adversary_reward, trigger, augmdp, k, './gridworld_ex_fm_correct2/po_ml1_p0.8', memory_length, episodes_num)
     print("complete ...")
