@@ -186,7 +186,7 @@ if __name__ == "__main__":
     #     pickle.dump(gridworlds_perturbed, file2)
     memory_length = 1
     k = len(gridworlds_perturbed)
-    trigger = FSCTriggerGW_finite(gridworld, k, 3)
+    trigger = FSCTriggerGW_finite(gridworld, k, memory_length)
     # constructing the transition function of the trigger.
     adversary_cost = get_adv_cost(trigger)
 
