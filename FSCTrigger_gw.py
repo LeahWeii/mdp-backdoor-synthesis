@@ -60,7 +60,8 @@ class FSCTriggerGW_finite:
 
 
     def get_memory_transition(self,mdp, k, memory_length):
-        trigger_states = mdp.states + [None]
+        trigger_states = mdp.states + ['None'] #trigger states are observation states
+        # trigger_states = mdp.states
         self.trans = {}
         self.states = ['l']
         self.init = 'l'
@@ -82,7 +83,7 @@ class FSCTriggerGW_finite:
                 s= matches[-1]  # the most recent state
                 for a in mdp.actlist:
                     for ns in trigger_states:
-                        if (s is None) or (ns is None) or (mdp.P(s, a, ns) != 0):
+                        if (s == 'None') or (ns == 'None') or (mdp.P(s, a, ns) != 0):
                             temp_m = matches + [ns]
                             print(temp_m)
                             if len(temp_m) > memory_length:

@@ -10,6 +10,8 @@ import random
 from pydot import Dot, Edge, Node
 import copy
 import pickle
+import ast
+
 
 
 class MDP:
@@ -262,29 +264,63 @@ class MDP:
     def generate_sample(self, policy, max_steps=10):
         # pi here should be pi[st] = [pro1, pro2, ...]
         traj = []
-        obs_traj = [] # Todo
+        # obs_traj = [] # Todo
         self.get_init_vec()
         st= random.choices(self.states, weights=self.init_vec, k=1)[0]
-        obs_st = self.obs(st)  # observation. #TODO
+        # obs_st = self.obs(st)  # observation. #TODO
         for _ in range(max_steps):
             # st_index = self.states.index(st)
             act = random.choices(self.actlist, weights=policy.policy[st], k=1)[0]
             next_state, step_reward = self.step(st, act)
-            obs_next_state = self.obs(st) # observation. #TODO
+            # obs_next_state = self.obs(next_state) # observation. #TODO
             traj.append((st, act, next_state, step_reward))
-            obs_traj.append((obs_st, act, obs_next_state, step_reward))
+            # obs_traj.append((obs_st, act, obs_next_state, step_reward))
             st = next_state
-            obs_st = obs_next_state  # observation. #TODO
+            # obs_st = obs_next_state  # observation. #TODO
         return traj
 
+    def obs(self, state, p=0.8):
+        """
+        Observation function that modifies the first element and the corresponding
+        last element in the list string (since they should be the same).
+
+        Args:
+            state: A tuple where first element is a coordinate tuple,
+                   second element is a string representation of a list
+            p: Probability of keeping the elements unchanged (default: 0.8)
+
+        Returns:
+            Modified tuple where both the first element and last element in the list
+            have probability p to remain the same and probability 1-p to become 'none'
+        """
+        first_element, list_string = state
+
+        # Parse the string to get the actual list
+        coordinate_list = ast.literal_eval(list_string)
+
+        # Apply observation noise to both the first element and last element in list
+        if random.random() < p:
+            observed_element = first_element
+        else:
+            observed_element = 'none'
+
+        # Update the last element in the coordinate list to match
+        coordinate_list[-1] = observed_element
+
+        # Convert back to string
+        modified_list_string = str(coordinate_list)
+
+        # Return the modified state
+        return (observed_element, modified_list_string)
     def generate_samples(self, policy, max_num = 10, max_steps=10):
         samples = []
+        obs_samples = []
         for _ in range(max_num):
-            traj = self.generate_sample(policy, max_steps)
+            traj= self.generate_sample(policy, max_steps)
             samples.append(traj)
-        return samples
-
-
+            obs_traj = convert_to_obs_traj(traj,0.8)
+            obs_samples.append(obs_traj)
+        return samples, obs_samples
 
 
 class Policy:
@@ -335,3 +371,48 @@ class Policy:
     def update_policy_actions(self, state, pvec):
         self.policy[state]= pvec
         return
+
+import ast
+import random
+
+import ast
+import random
+
+
+import ast
+import random
+
+def convert_to_obs_traj(traj, p=0.8):
+    """
+    Convert a trajectory into observation trajectory with observation noise and finite memory.
+
+    Args:
+        traj: list of (((state, memory_str), action, (next_state, next_memory_str), reward))
+        p: probability of observing the current state
+
+    Returns:
+        obs_traj: list of ((obs_state, obs_mem_str), action, s_next, reward)
+    """
+    obs_traj = []
+
+    # 🔐 Safe check: find the first valid memory string to extract k
+    k=3 #memory length
+
+    obs_memory = []
+
+    for ((state, _), action, s_next, reward) in traj:
+        # Observe the current state with probability p
+        obs = state if random.random() < p else 'None'
+
+        # Update memory (rolling window)
+        obs_memory.append(obs)
+        if len(obs_memory) > k:
+            obs_memory = obs_memory[-k:]
+
+        # Build observation state
+        obs_s_prev = (obs, str(obs_memory.copy()))
+
+        obs_traj.append((obs_s_prev, action, s_next, reward))
+
+    return obs_traj
+
