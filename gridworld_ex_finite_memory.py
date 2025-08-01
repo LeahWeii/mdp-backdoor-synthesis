@@ -91,7 +91,7 @@ def plot_final_vs_epsilon(epsilons, V0_final, V1_final, V0_final_attack, path=".
     plt.show()
     print(f"Last V0_final_attack: {V0_final_attack[-1]}")
 
-from backdoorSolver_Adam import plot_results
+# from backdoorSolver_Adam import plot_results
 def plot_from_pickled_results(path, episodes=None, lb=None):
     """
     Read V0_iter, V1_iter, V0_attack from pickled files in path and plot them in three subplots.
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     stoPar = 0.1
     gridworld = createGridWorldBarrier_new2(stoPar)
     st = gridworld.states
-    epsilon = 0.1
+
     stoPar_perturbed= [0.1, 0.2]
     gridworlds_perturbed =  [ createGridWorldBarrier_new2(sto) for sto in stoPar_perturbed]
     adversary_reward = get_zerosum_reward(gridworld)
@@ -196,11 +196,19 @@ if __name__ == "__main__":
 
     # warm-starting part
     epsilon = 0.1
-    episodes_num = 10000
+    episodes_num =1
 
 
-
-
+    path = './gridworld_ex_fm_po/p' +str(p_obs) + '_epsilon'+str(epsilon)
+    print(path)
+    path = './gridworld_ex_fm_po/test'
+    os.makedirs(path,exist_ok=True)
     # batch_test_switchingGradient(gridworld, adversary_reward, trigger, augmdp, k, './gridworld_ex', episodes=episodes_num, lr=0.01, tolerance=1e-2)
-    backdoorSolver_PO.switchingGradient_no_marginalization(gridworld,  epsilon, adversary_reward, trigger, augmdp, k, './gridworld_ex_fm_po/p0.8/', episodes_num)
+    backdoorSolver_PO.switchingGradient_no_marginalization(gridworld,  epsilon, adversary_reward, trigger, augmdp, k, path, episodes_num)
+
+    path_a = path + '/ablation_pi1'
+    os.makedirs(path_a,exist_ok=True)
+    # batch_test_switchingGradient(gridworld, adversary_reward, trigger, augmdp, k, './gridworld_ex', episodes=episodes_num, lr=0.01, tolerance=1e-2)
+    backdoorSolver_PO.ablation_pi1(gridworld,  epsilon, adversary_reward, trigger, augmdp, k, path_a, episodes_num)
+
     print("complete ...")

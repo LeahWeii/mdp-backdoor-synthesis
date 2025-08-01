@@ -63,7 +63,7 @@ class FSCTriggerGW_finite:
         pointer = 0
         while pointer < len(self.states):
             memory_state = self.states[pointer]
-            pointer += 1    
+            pointer += 1
             self.trans[memory_state] = {}
             if memory_state == 'l': # initialization
                 for o in mdp.observations:

@@ -1,57 +1,76 @@
 import numpy as np
 
-import MDP
-from FSCTrigger import *
+import POMDP
+
 from itertools import product
 from mdpSolver import *
 from GradientCal import *
+import GradientCalTrigger
 import os
+import numpy as np
 
+def is_valid_transition_matrix(P, tol=1e-8):
+    if np.any(P < 0):
+        return False, "Negative entries found."
+    row_sums = P.sum(axis=1)
+    if not np.allclose(row_sums, 1, atol=tol):
+        return False, f"Row sums not equal to 1: {row_sums}"
+    return True, "Transition matrix is valid."
 
-def get_augMDP(mdp, trigger, sampledMDPs, adv_reward, adv_cost = None):
-    """
-
-    :param mdp: the original MDP.
-    :param trigger: the finite-state trigger
-    :param sampledMDPs:  the sampled set of Markov decision processes.
-    :param adv_reward: player 1's reward function
-    :return:
-    """
-    augmdp  = MDP.MDP()
-    augstate = []
-    K= len(sampledMDPs)
+def get_augMDP(mdp, trigger,  sampledMDPs, adv_reward, adv_cost=None):
+    augmdp = POMDP.MDPwEmission()
+    K = len(sampledMDPs)
     augmdp.actlist = list(product(mdp.actlist, range(K)))
-    augmdp.init = (mdp.init, trigger.trans[trigger.init][str([mdp.init])]) # assume deterministic initial states.
-    augmdp.states = [augmdp.init]
-    n= len(augmdp.states)
-    augmdp.prob = {a: np.zeros((n,n)) for a in augmdp.actlist}
-    pointer = 0
-    prob_trans ={}
+    pointer =-1
+    init_dist = {}
+    prob_trans = {}
     reward = {}
     agent_reward = {}
-    alpha = 0
     while pointer < len(augmdp.states):
-        (s,m) = augmdp.states[pointer]
-        for (a,k) in augmdp.actlist:
-            reward[((s,m),(a,k))] = adv_reward[s][a] - alpha*adv_cost[m][k] # adversarial reward is assigned
-            agent_reward[((s,m),(a,k))] = mdp.reward[s][a] # agent's reward is assigned
-            for ns in mdp.states:
-                if sampledMDPs[k].P(s,a,ns)>0:
-                    p = sampledMDPs[k].P(s,a,ns)
-                    trans = (s,a,ns)
-                    nk = trigger.trans[m][trans]
-                    if (ns, nk) not in augmdp.states:
-                        augmdp.states.append((ns,nk))
-                    ns_idx = augmdp.states.index((ns,nk))
-                    prob_trans[(pointer,(a,k), ns_idx)]= p
+        if pointer == -1:
+            s = mdp.init
+            for o in mdp.get_obs_supp(s):
+                trigger_state = trigger.trans[trigger.init][o]
+                if (s, trigger_state) not in augmdp.states:
+                    augmdp.states.append((s, trigger_state))
+                init_dist[(s, trigger_state)] = mdp.get_emit_prob(s, o)
+        else:
+            (s, m) = augmdp.states[pointer]
+            for act in augmdp.actlist:
+                (a, k) = act
+                reward[((s, m), act)] = adv_reward[s][a]
+                agent_reward[((s, m), act)] = mdp.reward[s][a]
+                for ns in mdp.states:
+                    if sampledMDPs[k].P(s,a,ns)>0:
+                        for o in mdp.get_obs_supp(ns):
+                            print(o)
+                            trigger_state= trigger.trans[m][o]
+                            if (ns, trigger_state) not in augmdp.states:
+                                augmdp.states.append((ns, trigger_state))
+                            aug_s_idx = augmdp.states.index((s, m))
+                            aug_ns_idx = augmdp.states.index((ns, trigger_state))
+                            if (aug_s_idx, act, aug_ns_idx) not in prob_trans:
+                                prob_trans[(aug_s_idx, act, aug_ns_idx)] = 0
+                            prob_trans[(aug_s_idx, act, aug_ns_idx)] += sampledMDPs[k].P(s, a, ns) * mdp.get_emit_prob(ns, o)
+                            print((s,m), act, (ns, trigger_state), prob_trans[(aug_s_idx, act, aug_ns_idx)])
         pointer += 1
+
     n = len(augmdp.states)
-    augmdp.prob={a : np.zeros((n,n)) for a in augmdp.actlist}
+    augmdp.prob = {a: np.zeros((n, n)) for a in augmdp.actlist}
+    augmdp.init_dist = np.zeros(len(augmdp.states))
+    for s in init_dist:
+        augmdp.init_dist[augmdp.states.index(s)] = init_dist[s]
+
     for trans in prob_trans.keys():
-        augmdp.prob[trans[1]][trans[0],trans[2]]= prob_trans[trans]
-    augmdp.reward = {state: {act: reward[(state,act)] for act in augmdp.actlist} for state in augmdp.states}
-    augmdp.agent_reward = {state: {act: agent_reward[(state,act)] for act in augmdp.actlist} for state in augmdp.states}
+        augmdp.prob[trans[1]][trans[0], trans[2]] = prob_trans[trans]
+    for act in augmdp.actlist:
+        print(is_valid_transition_matrix(augmdp.prob[act], tol=1e-8)[1])
+    augmdp.reward = {state: {act: reward[(state, act)] for act in augmdp.actlist} for state in augmdp.states}
+    augmdp.agent_reward = {state: {act: agent_reward[(state, act)] for act in augmdp.actlist} for state in
+                           augmdp.states}
     return augmdp
+
+#
 
 def remove_ith_element(tup, i):
     return tup[:i] + tup[i+1:]
@@ -83,14 +102,14 @@ def marginalizedMDP(game, player, i):
                 mgame.reward[s][act_wo_i] = reward_temp
     return mgame
 
-def get_lowerbound(mdp, degrade_percent = 0.2):
+def get_lowerbound(mdp, degrade_percent):
     """
 
     :param mdp: a given mdp.
     :param degrade_percent: performance drop measured by percentage of the original optimal reward
     :return:
     """
-    [V, pol] = valueIter(mdp)
+    [V, pol] = valueIterHardmax(mdp) # TODO CHANGE HARDMAX
     initial = mdp.states.index(mdp.init) # deterministic initial state.
     lb = V[initial]*(1-degrade_percent) # the lower bound on the performance.
     return lb
@@ -104,7 +123,7 @@ def get_joint_policy(augmdp, pol0, pol1):
             a0_idx = pol0.actlist.index(joint_action[0])
             a1_idx = pol1.actlist.index(joint_action[1])
             act_idx = augmdp.actlist.index(joint_action)
-            joint_policy[joint_state][act_idx] = pol0.policy[joint_state[0]][a0_idx]*pol1.policy[joint_state[1]][a1_idx]
+            joint_policy[joint_state][act_idx] += pol0.policy[joint_state[0]][a0_idx]*pol1.policy[joint_state[1]][a1_idx]
     jpolicy = Policy(augmdp.states.copy(), augmdp.actlist.copy(), False, joint_policy)
     return jpolicy
 
@@ -192,7 +211,7 @@ def plot_results(path, V0_iter, V1_iter, V0_iter_attack, episodes, lb):
     plt.savefig(f"{path}/plot_v_iter.png")
     # plt.show()
 
-import GradientCalTrigger
+
 
 
 
@@ -235,98 +254,7 @@ def plot_from_pickled_results(path, episodes=None, lb=None):
     plt.tight_layout()
     plt.show()
 
-def switchingGradient(mdp,epsilon, adv_reward, trigger, augmdp, K, path,  episodes=5000, lr=0.1, max_iters=200, tolerance=1e-2):
-    original_states = mdp.states
-    original_actlist = mdp.actlist
-    trigger_states = trigger.states
-    trigger_acts = list(range(K))
-    pol0 = Policy(original_states, original_actlist, False) # randomized policy, initialized to a uniform random one.
-    pol1 = Policy(trigger_states, trigger_acts, False)
-    theta0 = policy_to_theta(mdp, pol0)
-    lb= get_lowerbound(mdp, degrade_percent =epsilon)
-    tau = 0.1 # temperature
-    theta1 = np.zeros(len(trigger.states)*K)
-    V0_iter= []
-    V0_iter_attack = []
-    V1_iter= []
-    sample_size = 5
-    V_original, pol0_opt =   valueIter(mdp, tau)
-    V_attack  = policyEval(mdp,  pol0_opt, 0.01, adv_reward)
-
-    V_0 = policyEval(mdp,  pol0_opt, 0.01)
-    print("The value of opgimal policy for attacker's reward  is", V_attack[mdp.init])
-    initial = mdp.states.index(mdp.init) # deterministic initial state.
-    moment0=0
-    moment01=0
-    moment00=0
-    small_epsilon = 1e-8
-    print("The optimal value under the original MDP is", V_original[initial])
-    for episode in range(episodes):
-        V0 = policyEval(mdp, pol0)
-        if V0[mdp.states.index(mdp.init)] < lb: # performance is worse than lower bound, constraint is violated.
-            # gradient ascent for reward 0
-            if episode % 100 == 0:
-                print("The constraint is violated: V0 is", V0[mdp.states.index(mdp.init)])
-            samples = mdp.generate_samples(pol0, sample_size)
-            GradientCal0 = GradientCal(mdp, pol0, tau, mdp.reward)
-            grad_pol0 = GradientCal0.dJ_dtheta(samples) # gradient ascent one step in the original MDP.
-            if np.linalg.norm(grad_pol0, ord=np.inf) < tolerance:  # Stop if gradient is too small
-                break
-            moment0 += grad_pol0 ** 2
-            theta0 +=  lr * grad_pol0 / (np.sqrt(moment0) + small_epsilon)    # Update step
-            pol0 = Policy(mdp.states, mdp.actlist, False, theta_to_policy(mdp, theta0, tau))
-        else:
-            if episode % 100 == 0:
-                print("The constraint is satisfied: V0 is", V0[mdp.states.index(mdp.init)])
-            marg_MDP0 = marginalizedMDP(augmdp, pol1, 1) # marginalize out the policy for trigger
-            aug_adv_reward0, aug_policy0 = covert_reward_pol_augmdp_pol0(augmdp, pol0, adv_reward) # compute the policy for player 1 in the augmented state space
-            samples0 = marg_MDP0.generate_samples(aug_policy0, sample_size) # obtain samples from the augmented MDP.
-            GradientCal1_0 = GradientCalTrigger.GradientCalTrigger(marg_MDP0, 0, pol0,  tau, adv_reward)
-            grad_pol0_1 = GradientCal1_0.dJ_dtheta(samples0)  # gradient ascent one step in the marginalized MDP with policy 1.
-            moment00 += grad_pol0_1 ** 2
-            theta0 += lr * grad_pol0_1 / (np.sqrt(moment00) + small_epsilon)  # Update step
-            pol0 = Policy(mdp.states, mdp.actlist, False, theta_to_policy(mdp, theta0, tau))
-            # compute the gradient for policy 1
-            marg_MDP1 = marginalizedMDP(augmdp, pol0, 0)  # marginalize out the policy for the backdoor policy
-            aug_adv_reward1, aug_policy1 = covert_reward_pol_augmdp(augmdp,  pol1, adv_reward)
-            samples1 = marg_MDP1.generate_samples(aug_policy1, sample_size) # obtain samples from the augmented MDP.
-            GradientCal1_1 = GradientCalTrigger.GradientCalTrigger(marg_MDP1, 1, pol1, tau, adv_reward)
-            grad_pol1_1 = GradientCal1_1.dJ_dtheta(samples1)  # gradient ascent one step in the marginalized MDP with policy 1.
-
-            moment01 += grad_pol1_1 ** 2
-            theta1 += lr * grad_pol1_1 / (np.sqrt(moment01) + small_epsilon)  # Update step
-            # theta1 += learning_rate2 * grad_pol1_1  # Update step
-            if np.linalg.norm(grad_pol0_1, ord=np.inf) < tolerance and np.linalg.norm(grad_pol1_1, ord=np.inf) < tolerance:  # Stop if gradient is too small
-                break
-            V1 = policyEval(augmdp,  get_joint_policy(augmdp, pol0, pol1))
-            V1_iter.append(V1[augmdp.states.index(augmdp.init)])
-            print("The value of the attacker's MDP under trigger:", V1[augmdp.states.index(augmdp.init)])
-            #input("Press Enter to continue...")
-            V0 =  policyEval(mdp,  pol0)
-            V0_iter.append(V0[mdp.states.index(mdp.init)])
-            print("The value for the original MDP:", V0[mdp.states.index(mdp.init)])
-            #   if episode % 100 == 0:
-            #       print(f"Episode {episode}: ")
-
-
-    with open(f"{path}/V0.pkl", "wb") as file_v0:  # "rb" means read in binary mode
-        pickle.dump(V0_iter, file_v0)
-    with open(f"{path}/V1.pkl", "wb") as file_v1:  # "rb" means read in binary mode
-        pickle.dump(V1_iter, file_v1)
-    with open(f"{path}/pol0.pkl", "wb") as file_pol0:  # "rb" means read in binary mode
-        pickle.dump(pol0, file_pol0)
-    with open(f"{path}/pol1.pkl", "wb") as file_pol1:  # "rb" means read in binary mode
-        pickle.dump(pol1, file_pol1)
-    with open(f"{path}/v_original.pkl", "wb") as file_v0:  # "rb" means read in binary mode
-        pickle.dump(V_original, file_v0)
-    with open(f"{path}/pol0_opt.pkl", "wb") as file_all:  # "rb" means read in binary mode
-        pickle.dump(pol0_opt, file_all)
-    plot_results(path, V0_iter, V1_iter, V0_iter_attack, episodes, lb)
-    return
-
-
-
-def switchingGradient_no_marginalization(mdp,epsilon, adv_reward, trigger, augmdp,  K, path,  episodes=1000, lr=0.01,   tolerance=1e-2):
+def ablation_pi1(mdp,  epsilon, adv_reward, trigger,  augmdp,  K, path,  episodes=1000, lr=0.01,   tolerance=1e-2):
     """
 
     :param mdp: original MDP
@@ -346,74 +274,56 @@ def switchingGradient_no_marginalization(mdp,epsilon, adv_reward, trigger, augmd
     original_actlist = mdp.actlist
     trigger_states = trigger.states
     trigger_acts = trigger.actlist
+    augmdp.gamma =0.99
+
     pol0 = Policy(original_states, original_actlist, False) # randomized policy, initialized to a uniform random one.
     pol1 = Policy(trigger_states, trigger_acts, False)
     theta0 = policy_to_theta(mdp, pol0)
-    lb= get_lowerbound(mdp, degrade_percent =epsilon)
+    lb= get_lowerbound(mdp, degrade_percent =epsilon) # TODO
     tau = 0.1 # temperature
     theta1 = np.zeros(len(trigger.states)*K)
     V0_iter= []
     V1_iter= []
     V0_iter_attack = []
     sample_size = 10
-    V_original, pol0_opt =   valueIter(mdp, tau)
-    V_attack  = policyEval(mdp,  pol0_opt, 0.01, adv_reward)
-    V_0 = policyEval(mdp,  pol0_opt, 0.01)
+    V_original, pol0_opt =   valueIterHardmax(mdp, tau) # TODO
+    V_attack  = policyEval(mdp,  pol0_opt, 0.001, adv_reward)
+    # V_0 = policyEval(mdp,  pol0_opt, 0.001)
     print("The value of optimal policy for attacker's reward  is", V_attack[mdp.states.index(mdp.init)])
     initial = mdp.states.index(mdp.init) # deterministic initial state.
     moment0=0
     moment01=0
-    moment00=0
     small_epsilon = 1e-8 # preventing devision by 0.
+    v1 = V_original[initial]
+    pol0 = pol0_opt
     print("The optimal value under the original MDP is", V_original[initial])
     for episode in range(episodes):
         # lr = lr * math.exp(-0.0004 * episode)
-        pol0 = Policy(mdp.states, mdp.actlist, False, theta_to_policy(mdp, theta0, tau))
         pol1 = Policy(trigger.states, trigger.actlist, False, theta_to_policy(trigger, theta1, tau))
-
-        joint_policy = get_joint_policy(augmdp, pol0, pol1)
         V0 = policyEval(mdp, pol0)
-        joint_policy = get_joint_policy(augmdp, pol0, pol1)
-        V1 = policyEval(augmdp, joint_policy, 0.01)
-        V0_underattack = policyEval(augmdp,  joint_policy, 0.01, augmdp.agent_reward)
+        joint_policy = get_joint_policy(augmdp, pol0, pol1) # change back pol0
+        V1 = policyEval(augmdp, joint_policy, 0.001, augmdp.reward)
+        V0_underattack = policyEval(augmdp,  joint_policy, 0.001, augmdp.agent_reward)
+        v12 = V0[mdp.states.index(mdp.init)]
         V0_iter.append(V0[mdp.states.index(mdp.init)])
-        V1_iter.append(V1[augmdp.states.index(augmdp.init)])
-        V0_iter_attack.append(V0_underattack[augmdp.states.index(augmdp.init)])
-        if V0[mdp.states.index(mdp.init)] < lb: # performance is worse than lower bound, constraint is violated.
-            # gradient ascent for reward 0
-            if episode % 100 == 0:
-                print("The constraint is violated: V0 is", V0[mdp.states.index(mdp.init)])
-            samples,_ = mdp.generate_samples(pol0, sample_size)
-            GradientCal0 = GradientCal(mdp, pol0, tau, mdp.reward)
-            grad_pol0 = GradientCal0.dJ_dtheta(samples) # gradient ascent one step in the original MDP.
-            moment0 += grad_pol0 ** 2
-            theta0 +=  lr * grad_pol0 / (np.sqrt(moment0) + small_epsilon)    # Update step
-        else:
-            if episode% 100 == 0:
-                print("The constraint is satisfied: V0 is", V0[mdp.states.index(mdp.init)])
-            samples, obs_samples = augmdp.generate_samples(joint_policy, sample_size) #TODO: ADD OBSERVED SAMPLES.
-            GradientCal1_0 = GradientCalTrigger.GradientCalTrigger(augmdp, 0, pol0,  tau, adv_reward)
-            grad_pol0_1 = GradientCal1_0.dJ_dtheta(samples)  # gradient ascent one step in the marginalized MDP with policy 1.
-            moment00 += grad_pol0_1 ** 2
-            theta0 += lr * grad_pol0_1 / (np.sqrt(moment00) + small_epsilon)  # Update step
-            # compute the gradient for policy 1
-            GradientCal1_1 = GradientCalTrigger.GradientCalTrigger(augmdp, 1, pol1, tau, adv_reward)
+        V1_current  = np.inner(V1, augmdp.init_dist)
+        V0_underattack_current = np.inner(V0_underattack, augmdp.init_dist)
+        V1_iter.append(V1_current)
+        V0_iter_attack.append(V0_underattack_current)
+        # print("Episode:", episode, "V0:", V0[mdp.states.index(mdp.init)], "V1:", V1_current, "V0 under attack:", V0_underattack_current)
+        if episode% 100 == 0:
+            print("The constraint is satisfied: V0 is", V0[mdp.states.index(mdp.init)])
+        samples, trigger_samples = augmdp.generate_samples_2(joint_policy, sample_size) #TODO: ADD OBSERVED SAMPLES.
 
-            grad_pol1_1 = GradientCal1_1.dJ_dtheta(obs_samples)  # TODO: observed_samples. # gradient ascent one step in the marginalized MDP with policy 1.
-            moment01 += grad_pol1_1 ** 2
-            theta1 += lr * grad_pol1_1 / (np.sqrt(moment01) + small_epsilon)  # Update step
-            # theta1 += learning_rate2 * grad_pol1_1  # Update step
-            #if np.linalg.norm(grad_pol0_1, ord=np.inf) < tolerance and np.linalg.norm(grad_pol1_1, ord=np.inf) < tolerance:  # Stop if gradient is too small
-            #    break
-            #V1 = policyEval(augmdp,  get_joint_policy(augmdp, pol0, pol1))
-            #V1_iter.append(V1[augmdp.states.index(augmdp.init)])
-            #print("The value of the attacker's MDP under trigger:", V1[augmdp.states.index(augmdp.init)])
-            #input("Press Enter to continue...")
-            #V0 =  policyEval(mdp,  pol0)
-            #V0_iter.append(V0[mdp.states.index(mdp.init)])
-            #print("The value for the original MDP:", V0[mdp.states.index(mdp.init)])
-            #   if episode % 100 == 0:
-            #       print(f"Episode {episode}: ")
+        # compute the gradient for policy 1
+        GradientCal1_1 = GradientCalTrigger.GradientCalTrigger(augmdp, 1, pol1, tau, adv_reward)
+        grad_pol1_1 = GradientCal1_1.dJ_dtheta(trigger_samples)  # TODO: observed_samples. # gradient ascent one step in the marginalized MDP with policy 1.
+        moment01 += grad_pol1_1 ** 2
+        theta1 += lr * grad_pol1_1 / (np.sqrt(moment01) + small_epsilon)  # Update step
+
+    print(f"last V0 is {V0_iter[-1]}")
+    print(f"last V1 is {V1_iter[-1]}")
+    print(f"last V0_attack is {V0_iter_attack[-1]}")
 
 
     with open(f"{path}/V0.pkl", "wb") as file_v0:  # "rb" means read in binary mode
@@ -430,6 +340,125 @@ def switchingGradient_no_marginalization(mdp,epsilon, adv_reward, trigger, augmd
         pickle.dump(V_original, file_v0)
     with open(f"{path}/pol0_opt.pkl", "wb") as file_all:  # "rb" means read in binary mode
         pickle.dump(pol0_opt, file_all)
+    d = lb
+    plot_results(path, V0_iter, V1_iter, V0_iter_attack, episodes, lb)
+    return pol0, pol1
+
+
+
+
+def switchingGradient_no_marginalization(mdp,  epsilon, adv_reward, trigger,  augmdp,  K, path,  episodes=1000, lr=0.01,   tolerance=1e-2):
+    """
+
+    :param mdp: original MDP
+    :param epsilon: performance degradtion suboptimality
+    :param adv_reward: reward function r_b
+    :param trigger: trigger policy class
+    :param augmdp: augmented MDP constructed from MDP and a set of transition functions.
+    :param K: number of transition functions for the trigger
+    :param path: directory for result.
+    :param episodes: upper bound on the number of episode
+    :param lr: used in adam update
+    :param tolerance: stopping criteria threshold.
+    :return: pi0, pi1
+
+    """
+    original_states = mdp.states
+    original_actlist = mdp.actlist
+    trigger_states = trigger.states
+    trigger_acts = trigger.actlist
+    augmdp.gamma =0.99
+
+    pol0 = Policy(original_states, original_actlist, False) # randomized policy, initialized to a uniform random one.
+    pol1 = Policy(trigger_states, trigger_acts, False)
+    theta0 = policy_to_theta(mdp, pol0)
+    lb= get_lowerbound(mdp, degrade_percent =epsilon) # TODO
+    tau = 0.1 # temperature
+    theta1 = np.zeros(len(trigger.states)*K)
+    V0_iter= []
+    V1_iter= []
+    V0_iter_attack = []
+    sample_size = 10
+    V_original, pol0_opt =   valueIterHardmax(mdp, tau) # TODO
+    V_attack  = policyEval(mdp,  pol0_opt, 0.001, adv_reward)
+    # V_0 = policyEval(mdp,  pol0_opt, 0.001)
+    print("The value of optimal policy for attacker's reward  is", V_attack[mdp.states.index(mdp.init)])
+    initial = mdp.states.index(mdp.init) # deterministic initial state.
+    moment0=0
+    moment01=0
+    moment00=0
+    small_epsilon = 1e-8 # preventing devision by 0.
+    v1 = V_original[initial]
+    print("The optimal value under the original MDP is", V_original[initial])
+    for episode in range(episodes):
+        # lr = lr * math.exp(-0.0004 * episode)
+        pol0 = Policy(mdp.states, mdp.actlist, False, theta_to_policy(mdp, theta0, tau))
+        pol1 = Policy(trigger.states, trigger.actlist, False, theta_to_policy(trigger, theta1, tau))
+        V0 = policyEval(mdp, pol0)
+        joint_policy = get_joint_policy(augmdp, pol0, pol1) # change back pol0
+        V1 = policyEval(augmdp, joint_policy, 0.001, augmdp.reward)
+        V0_underattack = policyEval(augmdp,  joint_policy, 0.001, augmdp.agent_reward)
+        v12 = V0[mdp.states.index(mdp.init)]
+        V0_iter.append(V0[mdp.states.index(mdp.init)])
+        V1_current  = np.inner(V1, augmdp.init_dist)
+        V0_underattack_current = np.inner(V0_underattack, augmdp.init_dist)
+        V1_iter.append(V1_current)
+        V0_iter_attack.append(V0_underattack_current)
+        # print("Episode:", episode, "V0:", V0[mdp.states.index(mdp.init)], "V1:", V1_current, "V0 under attack:", V0_underattack_current)
+        if V0[mdp.states.index(mdp.init)] < lb: # performance is worse than lower bound, constraint is violated.
+            # gradient ascent for reward 0
+            if episode % 100 == 0:
+                print("The constraint is violated: V0 is", V0[mdp.states.index(mdp.init)])
+            samples = mdp.generate_samples(pol0, sample_size)
+            GradientCal0 = GradientCal(mdp, pol0, tau, mdp.reward)
+            grad_pol0 = GradientCal0.dJ_dtheta(samples) # gradient ascent one step in the original MDP.
+            moment0 += grad_pol0 ** 2
+            theta0 +=  lr * grad_pol0 / (np.sqrt(moment0) + small_epsilon)    # Update step
+        else:
+            if episode% 100 == 0:
+                print("The constraint is satisfied: V0 is", V0[mdp.states.index(mdp.init)])
+            samples, trigger_samples = augmdp.generate_samples_2(joint_policy, sample_size) #TODO: ADD OBSERVED SAMPLES.
+            GradientCal0 = GradientCal(mdp, pol0, tau, adv_reward)
+            grad_pol0_1 =  GradientCal0.dJ_dtheta(samples) # GradientCalTrigger.GradientCalTrigger(augmdp, 0, pol0,  tau, adv_reward)
+            moment00 += grad_pol0_1 ** 2
+            theta0 += lr * grad_pol0_1 / (np.sqrt(moment00) + small_epsilon)  # Update step
+            # compute the gradient for policy 1
+            GradientCal1_1 = GradientCalTrigger.GradientCalTrigger(augmdp, 1, pol1, tau, adv_reward)
+            grad_pol1_1 = GradientCal1_1.dJ_dtheta(trigger_samples)  # TODO: observed_samples. # gradient ascent one step in the marginalized MDP with policy 1.
+            moment01 += grad_pol1_1 ** 2
+            theta1 += lr * grad_pol1_1 / (np.sqrt(moment01) + small_epsilon)  # Update step
+            # theta1 += learning_rate2 * grad_pol1_1  # Update step
+            #if np.linalg.norm(grad_pol0_1, ord=np.inf) < tolerance and np.linalg.norm(grad_pol1_1, ord=np.inf) < tolerance:  # Stop if gradient is too small
+            #    break
+            #V1 = policyEval(augmdp,  get_joint_policy(augmdp, pol0, pol1))
+            #V1_iter.append(V1[augmdp.states.index(augmdp.init)])
+            #print("The value of the attacker's MDP under trigger:", V1[augmdp.states.index(augmdp.init)])
+            #input("Press Enter to continue...")
+            #V0 =  policyEval(mdp,  pol0)
+            #V0_iter.append(V0[mdp.states.index(mdp.init)])
+            #print("The value for the original MDP:", V0[mdp.states.index(mdp.init)])
+            #   if episode % 100 == 0:
+            #       print(f"Episode {episode}: ")
+    print(f"last V0 is {V0_iter[-1]}")
+    print(f"last V1 is {V1_iter[-1]}")
+    print(f"last V0_attack is {V0_iter_attack[-1]}")
+
+
+    with open(f"{path}/V0.pkl", "wb") as file_v0:  # "rb" means read in binary mode
+        pickle.dump(V0_iter, file_v0)
+    with open(f"{path}/V1.pkl", "wb") as file_v1:  # "rb" means read in binary mode
+        pickle.dump(V1_iter, file_v1)
+    with open(f"{path}/V0_attack.pkl", "wb") as file_v0_attack:  # "rb" means read in binary mode
+        pickle.dump(V0_iter_attack, file_v0_attack)
+    with open(f"{path}/pol0.pkl", "wb") as file_pol0:  # "rb" means read in binary mode
+        pickle.dump(pol0, file_pol0)
+    with open(f"{path}/pol1.pkl", "wb") as file_pol1:  # "rb" means read in binary mode
+        pickle.dump(pol1, file_pol1)
+    with open(f"{path}/v_original.pkl", "wb") as file_v0:  # "rb" means read in binary mode
+        pickle.dump(V_original, file_v0)
+    with open(f"{path}/pol0_opt.pkl", "wb") as file_all:  # "rb" means read in binary mode
+        pickle.dump(pol0_opt, file_all)
+    d = lb
     plot_results(path, V0_iter, V1_iter, V0_iter_attack, episodes, lb)
     return pol0, pol1
 
