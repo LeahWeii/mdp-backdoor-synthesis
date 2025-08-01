@@ -1,9 +1,10 @@
-from  GridWorld import GridWorld
-from MDP import *
+from GridWorld import GridWorld
+from MDP import *  # consider importing only what you need
 import pickle
 from FSCTrigger_gw import FSCTriggerGW, FSCTriggerGW_finite
 import backdoorSolver_PO
 import os
+
 
 def createGridWorldBarrier_new2(stoPar):
     gamma = 0.99
@@ -199,8 +200,8 @@ if __name__ == "__main__":
     episodes_num =1
 
 
-    path = './gridworld_ex_fm_po/p' +str(p_obs) + '_epsilon'+str(epsilon)
-    print(path)
+    # path = './gridworld_ex_fm_po/p' +str(p_obs) + '_epsilon'+str(epsilon)
+    # print(path)
     path = './gridworld_ex_fm_po/test'
     os.makedirs(path,exist_ok=True)
     # batch_test_switchingGradient(gridworld, adversary_reward, trigger, augmdp, k, './gridworld_ex', episodes=episodes_num, lr=0.01, tolerance=1e-2)
