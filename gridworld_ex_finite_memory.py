@@ -2,11 +2,11 @@ from  GridWorld import GridWorld
 from MDP import *
 import pickle
 from FSCTrigger_gw import FSCTriggerGW, FSCTriggerGW_finite
-import backdoorSolver_Adam
+import backdoorSolver_PO
 import os
 
 def createGridWorldBarrier_new2(stoPar):
-    gamma = 0.95
+    gamma = 0.99
     tau = 0.1
     goallist = [(4, 3), (0, 5)]
     barrierlist = []
@@ -46,7 +46,7 @@ def get_zerosum_reward(gridworld):
                   gridworld.states}
     for st in reward.keys():
         for act in reward[st].keys():
-            adv_reward[st][act] = -reward[st][act]
+            adv_reward[st][act] = - reward[st][act] #Todo
     return adv_reward
 
 def get_adv_cost(trigger):
@@ -143,7 +143,7 @@ def batch_test_switchingGradient(mdp, adv_reward, trigger, augmdp, K, base_path,
         path = os.path.join(base_path, f"epsilon_{eps}")
         os.makedirs(path, exist_ok=True)
         print(f"Running for epsilon={eps}, results will be saved in {path}")
-        backdoorSolver_Adam.switchingGradient_no_marginalization(
+        backdoorSolver_PO.switchingGradient_no_marginalization(
             mdp, eps, adv_reward, trigger, augmdp, K, path,
             episodes=episodes, lr=lr, tolerance=tolerance
         )
@@ -174,9 +174,8 @@ if __name__ == "__main__":
     gridworld = createGridWorldBarrier_new2(stoPar)
     st = gridworld.states
     epsilon = 0.1
-
-    stoPar_perturbed= [0.1, 0.3]
-    gridworlds_perturbed =  [ createGridWorldBarrier_adv(sto) for sto in stoPar_perturbed]
+    stoPar_perturbed= [0.1, 0.2]
+    gridworlds_perturbed =  [ createGridWorldBarrier_new2(sto) for sto in stoPar_perturbed]
     adversary_reward = get_zerosum_reward(gridworld)
     #
     # with open("gridworld_ex/gridworld.pkl", "wb") as file1:  # "wb" means write in binary mode
@@ -190,17 +189,18 @@ if __name__ == "__main__":
     # constructing the transition function of the trigger.
     adversary_cost = get_adv_cost(trigger)
 
-
-
-    augmdp = backdoorSolver_Adam.get_augMDP(gridworld, trigger, gridworlds_perturbed, adversary_reward, adversary_cost)
+    p_obs = 0.8
+    augmdp = backdoorSolver_PO.get_augMDP(gridworld, trigger,  gridworlds_perturbed, adversary_reward, adversary_cost)
     # This augmented MDP has very sparse transition matrix. should use sparse matrix for future.
     # backdoorSolver_Adam.switchingGradient(mdp1, adv_reward, trigger, augmdp, k)
 
     # warm-starting part
-    epsilon = 0.2
+    epsilon = 0.1
     episodes_num = 10000
 
 
+
+
     # batch_test_switchingGradient(gridworld, adversary_reward, trigger, augmdp, k, './gridworld_ex', episodes=episodes_num, lr=0.01, tolerance=1e-2)
-    backdoorSolver_Adam.switchingGradient_no_marginalization(gridworld, epsilon, adversary_reward, trigger, augmdp, k, './gridworld_ex_fm_correct2/po_ml1_p0.8', memory_length, episodes_num)
+    backdoorSolver_PO.switchingGradient_no_marginalization(gridworld,  epsilon, adversary_reward, trigger, augmdp, k, './gridworld_ex_fm_po/p0.8/', episodes_num)
     print("complete ...")

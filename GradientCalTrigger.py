@@ -87,8 +87,8 @@ class GradientCalTrigger:
     def drho_dtheta_obs(self, rho):
         if len(rho) == 1:
             return np.zeros(self.y_size)
-        st = rho[0][0]
-        act = rho[0][1]
+        st = rho[0]
+        act = rho[1]
         rho = rho[1:]
         # Handle partial observation: if state is None, gradient contribution is zero
         if st is None or st[self.player_id] is None:
@@ -161,9 +161,9 @@ class GradientCalTrigger:
     def dPi_dtheta(self, st, act):
         # dlog(pi)_dtheta
         grad = np.zeros(self.y_size)
-        st_index = self.policy.states.index(st[self.player_id]) # the local state index and action index for the player i'
-        act_index = self.policy.actlist.index(act[self.player_id]) # change.
-        Pi = self.policy.policy[st[self.player_id]]
+        st_index = self.policy.states.index(st) # the local state index and action index for the player i'
+        act_index = self.policy.actlist.index(act) # change.
+        Pi = self.policy.policy[st]
         # print("Pi:", Pi)
         act_len = len(self.policy.actlist)
         for i in range(act_len):

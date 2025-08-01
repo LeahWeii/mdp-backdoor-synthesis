@@ -251,6 +251,16 @@ class MDP:
         reward = self.reward[state][action]
         return next_state, reward
 
+
+    def step_2(self, state, action):
+        """Simulate a transition given a state and action."""
+        if self.prob[action][self.states.index(state),:].sum()==0:
+            print('incorrect')
+        next_state = random.choices(
+            self.states, weights= self.prob[action][self.states.index(state), :], k=1)[0]
+        reward = self.reward[state][action]
+        return next_state, reward
+
     def one_step_transition(self, st, act, st_lists, pro_lists):
 
         st_list = st_lists[st][act]
@@ -261,23 +271,45 @@ class MDP:
         return st_list[next_st]
 
 
+
     def generate_sample(self, policy, max_steps=10):
         # pi here should be pi[st] = [pro1, pro2, ...]
-        traj = []
-        # obs_traj = [] # Todo
+        sys_traj = []
         self.get_init_vec()
         st= random.choices(self.states, weights=self.init_vec, k=1)[0]
-        # obs_st = self.obs(st)  # observation. #TODO
+        sys_st = st  # initialized the system states.
+        for _ in range(max_steps):
+            # st_index = self.states.index(st)
+            act = random.choices(self.actlist, weights=policy.policy[sys_st], k=1)[0]
+            next_state, step_reward = self.step(st, act)
+            sys_next_state = next_state  # observation.
+            sys_act = act
+            sys_traj.append((sys_st, sys_act, sys_next_state, step_reward))
+            sys_st= sys_next_state
+        return sys_traj
+
+    def generate_sample_2(self, policy, max_steps=10):
+        # pi here should be pi[st] = [pro1, pro2, ...]
+        sys_traj = []
+        trigger_traj = [] #
+        self.get_init_vec()
+        st= random.choices(self.states, weights=self.init_vec, k=1)[0]
+        sys_st = st[0]  # initialized the system states.
+        trigger_st = st[1]  # initialized the trigger states.
         for _ in range(max_steps):
             # st_index = self.states.index(st)
             act = random.choices(self.actlist, weights=policy.policy[st], k=1)[0]
             next_state, step_reward = self.step(st, act)
-            # obs_next_state = self.obs(next_state) # observation. #TODO
-            traj.append((st, act, next_state, step_reward))
-            # obs_traj.append((obs_st, act, obs_next_state, step_reward))
+            sys_next_state = next_state[0]  # observation.
+            sys_act = act[0]
+            trigger_act = act[1]
+            trigger_next_state = next_state[1]
+            sys_traj.append((sys_st, sys_act, sys_next_state, step_reward))
+            trigger_traj.append((trigger_st, trigger_act, trigger_next_state, step_reward))
             st = next_state
-            # obs_st = obs_next_state  # observation. #TODO
-        return traj
+            sys_st= sys_next_state
+            trigger_st = trigger_next_state  # observation. #TODO
+        return sys_traj, trigger_traj
 
     def obs(self, state, p=0.8):
         """
@@ -285,40 +317,36 @@ class MDP:
         last element in the list string (since they should be the same).
 
         Args:
-            state: A tuple where first element is a coordinate tuple,
-                   second element is a string representation of a list
-            p: Probability of keeping the elements unchanged (default: 0.8)
+            state
 
         Returns:
             Modified tuple where both the first element and last element in the list
             have probability p to remain the same and probability 1-p to become 'none'
         """
-        first_element, list_string = state
-
         # Parse the string to get the actual list
-        coordinate_list = ast.literal_eval(list_string)
 
         # Apply observation noise to both the first element and last element in list
+        observed_element = copy.deepcopy(state)
         if random.random() < p:
-            observed_element = first_element
+           pass
         else:
-            observed_element = 'none'
+            observed_element[0] = 'None'
+        return observed_element
 
-        # Update the last element in the coordinate list to match
-        coordinate_list[-1] = observed_element
-
-        # Convert back to string
-        modified_list_string = str(coordinate_list)
-
-        # Return the modified state
-        return (observed_element, modified_list_string)
     def generate_samples(self, policy, memory_length, max_num = 10, max_steps=10):
         samples = []
-        obs_samples = []
         for _ in range(max_num):
             traj= self.generate_sample(policy, max_steps)
             samples.append(traj)
-            obs_traj = convert_to_obs_traj(traj, memory_length, 0.8)
+        return samples
+
+
+    def generate_samples_2(self, policy, memory_length, max_num = 10, max_steps=10):
+        samples = []
+        obs_samples = []
+        for _ in range(max_num):
+            traj, obs_traj= self.generate_sample_2(policy, max_steps)
+            samples.append(traj)
             obs_samples.append(obs_traj)
         return samples, obs_samples
 
@@ -389,6 +417,7 @@ import random
 
 import ast
 import random
+
 
 def convert_to_obs_traj(traj,k, p=0.8):
     """

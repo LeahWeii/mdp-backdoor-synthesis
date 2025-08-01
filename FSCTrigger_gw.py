@@ -18,8 +18,8 @@ class FSCTriggerGW:
 
     def get_memory_transition(self,mdp, k):
         self.trans = {}
-        self.states = ['l']
-        self.init = 'l'
+        self.states = [str([mdp.init])]
+        self.init =  str([mdp.init])
         pointer = 0
         while pointer < len(self.states):
             memory_state = self.states[pointer]
@@ -48,20 +48,15 @@ class FSCTriggerGW:
 
 class FSCTriggerGW_finite:
 
-    def __init__(self,mdp,  K=2, memory_length=2):
+    def __init__(self,mdp,   K=2, memory_length=2):
         # The length of memory
         self.K = K
         self.actlist = list(range(K))
         self.init = None
         # The observations (the input of the finite state controller)
-        self.get_memory_transition(mdp,K, memory_length)
+        self.get_memory_transition(mdp,    K, memory_length)
 
-
-
-
-    def get_memory_transition(self,mdp, k, memory_length):
-        trigger_states = mdp.states + ['None'] #trigger states are observation states
-        # trigger_states = mdp.states
+    def get_memory_transition(self,mdp , k, memory_length):
         self.trans = {}
         self.states = ['l']
         self.init = 'l'
@@ -71,29 +66,22 @@ class FSCTriggerGW_finite:
             pointer += 1
             self.trans[memory_state] = {}
             if memory_state == 'l': # initialization
-                for s in trigger_states:
-                    new_m = str([s])
-                    self.trans[memory_state][new_m] = new_m
+                for o in mdp.observations:
+                    new_m = str([o])
+                    self.trans[memory_state][o] = new_m
                     if new_m not in self.states:
                         self.states.append(new_m)
 
             else:
                 # print("the memory state is: ", memory_state)
                 matches  =   ast.literal_eval(memory_state)
-                s= matches[-1]  # the most recent state
-                for a in mdp.actlist:
-                    for ns in trigger_states:
-                        if (s == 'None') or (ns == 'None') or (mdp.P(s, a, ns) != 0):
-                            temp_m = matches + [ns]
-                            print(temp_m)
-                            if len(temp_m) > memory_length:
-                                temp_m = temp_m[-memory_length:]
-                            new_m = str(temp_m)
-                            if new_m not in self.states:
-                                self.states.append(new_m)
-                            self.trans[memory_state][(s, a, ns)] = new_m
-                        else:
-                            # Optionally log skipped transitions
-                            pass  # or: print(f"Skipped: ({s}, {a}, {ns})")
-
+                for no in mdp.observations:
+                    temp_m = matches + [no]
+                    print(temp_m)
+                    if len(temp_m) > memory_length:
+                        temp_m = temp_m[-memory_length:]
+                    new_m = str(temp_m)
+                    if new_m not in self.states:
+                        self.states.append(new_m)
+                    self.trans[memory_state][no] = new_m # removing action from the transition
         return

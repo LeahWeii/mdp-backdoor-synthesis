@@ -1,8 +1,9 @@
 
 import numpy as np
 import copy
-from MDP import MDP
-class GridWorld(MDP):
+import random
+from POMDP import MDPwEmission
+class GridWorld(MDPwEmission):
     def __init__(self, width, height, stoPar, init, F, G, obstacles, Barrier, gamma, tau):
         self.width = width
         self.height = height
@@ -11,16 +12,21 @@ class GridWorld(MDP):
         self.actlist= list(self.actions.keys())
         self.complementA = self.getComplementA()
         self.states = self.getstate()
+        self.observations= copy.deepcopy(self.states)
+        self.observations.append(-1)
         self.addBarrier(Barrier)
         self.F = F
         self.G = G
+        self.p_obs = 0.8
         self.obstacles = obstacles
         self.init = init
         self.trans  = self.gettrans()
+        self.get_emission_matrix()
         self.get_prob()
         self.reward  = self.leader_reward()
         self.gamma = gamma
         self.tau = tau
+
 
     def is_terminal(self, state):
         if state in self.F or state in self.G or state == (-1, -1) :
@@ -48,6 +54,8 @@ class GridWorld(MDP):
         complementA[(1, 0)] = [(0, 1), (0, -1)]
         complementA[(-1, 0)] = [(0, 1), (0, -1)]
         return complementA
+
+
 
     def get_transitions(self, state, action):
         stoPar = self.stoPar
@@ -119,6 +127,41 @@ class GridWorld(MDP):
                     self.prob[a][i,j]  = self.trans[st][a][ns]
         return
 
+
+
+    def get_emission_matrix(self):
+        """Get the emission matrix, which is a square matrix with rows as states and columns as observations.
+        The value is the probability of observing the observation given the state."""
+        self.emit_matrix = np.zeros((len(self.states), len(self.observations)))
+        null_obs_idx = self.observations.index(-1) if -1 in self.observations else None
+        for s in self.states:
+            for o in self.observations:
+                s_idx = self.states.index(s)
+                o_idx = self.observations.index(o)
+                if s == o:
+                    self.emit_matrix[s_idx, o_idx] = self.p_obs
+                    self.emit_matrix[s_idx, null_obs_idx] = 1 - self.p_obs if null_obs_idx is not None else 0
+        return
+
+    def get_observation(self, state):
+        """Given a state, return an observation with probability p_obs."""
+        if random.random() < self.p_obs:
+            return state
+        else:
+            return -1 # -1 means no observation is made.
+
+    def get_obs_supp(self, state):
+        """Get the support of observations for a given state. This is a set of observations that can be observed from the state."""
+        supp = set([])
+        for o in self.observations:
+            if self.get_emit_prob(state, o) != 0:
+                supp.add(o)
+        return supp
+
+    def get_emit_prob(self, state, observation):
+        s_idx = self.states.index(state)
+        o_idx = self.observations.index(observation)
+        return self.emit_matrix[s_idx, o_idx]
 
 
     def checktrans(self, trans):

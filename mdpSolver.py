@@ -16,7 +16,7 @@ def softmax(x, temperature =1.0):
     return exp_x / np.sum(exp_x)
 
 
-def valueIter(mdp, temperature =1,  epsilon=0.1):
+def valueIter(mdp, temperature =1,  epsilon=0.01):
     # the transition matrix is sparse.
     pol = Policy(mdp.states, mdp.actlist)
     V = np.array([0.0 for s in mdp.states])
